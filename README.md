@@ -1,6 +1,6 @@
 # Kwispr
 
-**Toggle voice dictation for Linux / Wayland / KDE Plasma via OpenAI Whisper.** Press F5 → speak → press F5 → text auto-pastes into the focused window.
+**Toggle voice dictation for Linux / Wayland / KDE Plasma via OpenAI Whisper.** Press your hotkey → speak → press it again → text auto-pastes into the focused window.
 
 ![shell](https://img.shields.io/badge/shell-bash-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![platform](https://img.shields.io/badge/platform-Linux%20Wayland-orange)
 
@@ -19,7 +19,7 @@
 ## Architecture
 
 ```
-F5 (KDE Custom Shortcut)
+Hotkey (KDE Custom Shortcut)
   └─ kwispr.sh toggle
        ├─ start: ffmpeg -f pulse → ~/.cache/kwispr/TS.wav (via FIFO)
        │         notify-send "🎙 Listening" (persistent)
@@ -69,33 +69,37 @@ When `ydotool` is installed by `setup.sh`:
 
 After re-login: `systemctl status ydotoold` should show `active (running)`.
 
-## Binding F5
+## Binding a hotkey
 
-KDE doesn't recognize the multimedia-mode F5 on most keyboards directly — the key often sends something like `Meta+H` (en) / `Meta+р` (ru layout). Capture the real keysym:
+Pick any key or combination — a regular `F5`, a multimedia key, a mouse button, whatever you like. Bind it through KDE:
+
+1. **System Settings → Shortcuts → Shortcuts → Add New → Command/URL Shortcut**
+2. **Trigger:** press the key (or combo) you want to use
+3. **Action:** `<absolute_path>/kwispr.sh`
+4. **Apply**
+
+### Multimedia / Fn-row keys
+
+Some keyboards have a "multimedia mode" that remaps F-keys to send different keysyms (e.g. Meta+H instead of F5). KDE won't capture them as plain F-keys — you need to press them in that mode when setting the trigger. If KDE reports unusual keysyms, capture the real one first:
 
 ```bash
 sudo apt install -y wev
 wev
 ```
 
-Press F5 (mm-mode) in the `wev` window, look for the `sym ...` line, close.
+Press the key inside the `wev` window, read the `sym ...` line, close.
 
-Then:
+### Multiple keyboard layouts
 
-1. **System Settings → Shortcuts → Shortcuts → Add New → Command/URL Shortcut**
-2. Trigger: press F5 in mm-mode (KDE will capture the same keysym)
-3. Action: `<absolute_path>/kwispr.sh`
-4. Apply
-
-If you use multiple keyboard layouts, add a second trigger for the other layout (e.g. `Meta+H` on en + `Meta+P` on ru, both pointing to the same script).
+The same physical key can send different keysyms depending on the active layout (e.g. `Meta+H` on en vs. `Meta+Р` on ru). Add a second trigger for each layout — all pointing to the same script.
 
 ## Usage
 
 | Step | What happens |
 |---|---|
-| F5 | Recording starts. Persistent "🎙 Listening" notification. |
+| Press hotkey | Recording starts. Persistent "🎙 Listening" notification. |
 | (speak) | ffmpeg writes to `~/.cache/kwispr/TS.wav` |
-| F5 | ffmpeg shuts down gracefully (FIFO + 'q' → valid WAV). Notification → "⏳ Processing" |
+| Press hotkey again | ffmpeg shuts down gracefully (FIFO + 'q' → valid WAV). Notification → "⏳ Processing" |
 | ~1-3 s | Whisper transcribes, hallucination filter cleans subtitle artifacts |
 | done | `wl-copy` → `ydotool Ctrl+V` → text pasted. Notification → "✅ Pasted" / "Ready (in clipboard)" |
 
@@ -153,7 +157,7 @@ Plus a minimum 1 second of audio before the API call (below that — immediate "
 | "OPENAI_API_KEY not set" | Placeholder instead of a key | Put a real `sk-...` into `.env` |
 | "Too short" on normal speech | pulse hadn't opened yet (0.05s sleep too short) | Increase the `sleep` in `start_recording` |
 | Records but doesn't paste | ydotoold not running or `/dev/uinput` not accessible | `systemctl status ydotoold` + `ls -la /dev/uinput` (should be `crw-rw---- root input`) |
-| Pasted into wrong window | Focus was elsewhere when you pressed F5 | Place cursor in the target **before** the second F5 |
+| Pasted into wrong window | Focus was elsewhere when you pressed the hotkey | Place cursor in the target **before** pressing the hotkey to stop |
 | "API 401" | Wrong API key | Verify on platform.openai.com |
 | "API 429" | Rate limit / billing | Top up OpenAI balance |
 | Empty clipboard after ✅ | Wayland clipboard glitch | `systemctl --user restart xdg-desktop-portal` |
