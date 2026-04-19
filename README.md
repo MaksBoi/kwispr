@@ -4,6 +4,8 @@
 
 ![shell](https://img.shields.io/badge/shell-bash-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![platform](https://img.shields.io/badge/platform-Linux%20Wayland-orange)
 
+![demo](demo.gif)
+
 ## Why
 
 - **Stateless** — ~250 lines of bash, no daemons of our own, no GUI. The KDE Shortcut runs the script, the script exits. Next press runs it again.
