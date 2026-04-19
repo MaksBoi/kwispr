@@ -178,8 +178,9 @@ transcribe() {
     return 1
   fi
 
-  # Bilingual prompt to suppress "subtitles by / редактор субтитров" hallucinations
-  # without biasing recognition toward a single language.
+  # No prompt: a bilingual prompt was causing Whisper to *translate* speech
+  # into the language of the prompt instead of transcribing as-is. Subtitle
+  # hallucinations are scrubbed by the post-processing regex below.
   # temperature=0 for deterministic output.
   local http_code response curl_args
   response="$(mktemp)"
@@ -191,7 +192,6 @@ transcribe() {
     -F model=whisper-1
     -F response_format=json
     -F temperature=0
-    -F 'prompt=Voice dictation. Голосовая диктовка.'
     -F file=@"$wav"
   )
   # Optional: force language if KWISPR_LANGUAGE is set in .env
@@ -294,7 +294,7 @@ cmd_toggle() {
   if is_recording; then
     local wav
     wav="$(stop_recording)"
-    [[ -f "$wav" ]] || die "Запись пропала: $wav"
+    [[ -f "$wav" ]] || die "Recording disappeared: $wav"
     transcribe "$wav" || true
   else
     # Clean stale lock

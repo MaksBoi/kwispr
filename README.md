@@ -16,152 +16,156 @@
 
 **Tested on:** Ubuntu 25.10 + KDE Plasma 6 + PipeWire. Should work on any Linux with Wayland + `wl-clipboard` + `libnotify-bin`.
 
-## Архитектура
+## Architecture
 
 ```
 F5 (KDE Custom Shortcut)
   └─ kwispr.sh toggle
-       ├─ start: ffmpeg -f pulse → ~/.cache/kwispr/TS.wav (через FIFO)
+       ├─ start: ffmpeg -f pulse → ~/.cache/kwispr/TS.wav (via FIFO)
        │         notify-send "🎙 Listening" (persistent)
        └─ stop:  write 'q' to FIFO → ffmpeg flushes WAV
                  notify-send replace → "⏳ Processing"
                  curl POST https://api.openai.com/v1/audio/transcriptions
-                   model=whisper-1, temperature=0, prompt="Voice dictation..."
+                   model=whisper-1, temperature=0
                  sed-filter subtitle hallucinations
                  wl-copy $transcript
                  ydotool key 29:1 47:1 47:0 29:0  (Ctrl+V if enabled)
                  notify-send replace → "✅ Pasted" / "Ready (in clipboard)"
 ```
 
-**Никаких демонов на наш код.** Скрипт — stateless, запускается из KDE Shortcut, завершается. Состояние — lock-файл `~/.cache/kwispr/current.pid`. Единственный постоянно работающий компонент — системный `ydotoold` (опционально, для авто-вставки).
+**No daemons of our own.** The script is stateless, launched from the KDE Shortcut and exits after each press. State lives in lockfiles under `~/.cache/kwispr/`. The only persistent component is the optional `ydotoold` systemd service (for auto-paste).
 
-## Зависимости
+## Dependencies
 
-| Пакет | Назначение | Источник |
+| Package | Purpose | Source |
 |---|---|---|
-| `ffmpeg` | запись с pulse (через FIFO + 'q' для правильного flush) | APT |
-| `curl` | вызов OpenAI API | APT |
-| `jq` | парсинг JSON ответа | APT |
-| `wl-clipboard` | `wl-copy` для буфера | APT |
-| `libnotify-bin` | `notify-send` для персистентного статус-бабла | APT |
-| `pipewire-pulse` | pulse-compat слой на PipeWire | уже в Ubuntu 25.10 |
-| `ydotool` v1.0.4 (опционально) | авто-вставка Ctrl+V через `/dev/uinput` | GitHub release → `~/.local/bin/` |
+| `ffmpeg` | record from pulse (via FIFO + 'q' for proper flush) | APT |
+| `curl` | OpenAI API request | APT |
+| `jq` | parse JSON response | APT |
+| `wl-clipboard` | `wl-copy` for clipboard | APT |
+| `libnotify-bin` | `notify-send` for the persistent status bubble | APT |
+| `pipewire-pulse` | pulse-compat layer on PipeWire | ships with Ubuntu 25.10 |
+| `ydotool` v1.0.4 (optional) | auto-paste Ctrl+V via `/dev/uinput` | GitHub release → `~/.local/bin/` |
 
-**Почему `ydotool` скачивается с GitHub, а не из APT:** в APT Ubuntu живёт древняя версия 0.1.8 без команды `key` и без демона. Нам нужна 1.0.4+.
+**Why `ydotool` is downloaded from GitHub instead of APT:** the Ubuntu APT version is an ancient 0.1.8 without the `key` command or daemon. We need 1.0.4+.
 
-## Установка
+## Install
 
 ```bash
+git clone git@github.com:MaksBoi/kwispr.git
 cd kwispr
-./setup.sh                       # ставит deps, предлагает установить ydotool
+./setup.sh                       # installs deps, prompts for ydotool install
 cp .env.example .env
 chmod 600 .env
-# Впиши OPENAI_API_KEY в .env
+# Put your OPENAI_API_KEY into .env
 ```
 
-При установке `ydotool`:
-- скачивается v1.0.4 в `~/.local/bin/`
-- создаётся udev-правило `/etc/udev/rules.d/80-uinput.rules` чтобы `/dev/uinput` принадлежал группе `input`
-- юзер добавляется в группу `input` (нужен **relogin** после этого)
-- создаётся system-level systemd service `/etc/systemd/system/ydotoold.service`
+When `ydotool` is installed by `setup.sh`:
 
-После relogin: `systemctl status ydotoold` должен показать `active (running)`.
+- v1.0.4 downloaded into `~/.local/bin/`
+- udev rule `/etc/udev/rules.d/80-uinput.rules` makes `/dev/uinput` owned by the `input` group
+- your user is added to the `input` group (**re-login required** after this)
+- system-level systemd service `/etc/systemd/system/ydotoold.service` is created
 
-## Бинд F5
+After re-login: `systemctl status ydotoold` should show `active (running)`.
 
-KDE не знает про F5 в мультимедиа-режиме твоей клавиатуры — она шлёт что-то вроде `Meta+H` (en) / `Meta+р` (ru). Поймать реальный keysym:
+## Binding F5
+
+KDE doesn't recognize the multimedia-mode F5 on most keyboards directly — the key often sends something like `Meta+H` (en) / `Meta+р` (ru layout). Capture the real keysym:
 
 ```bash
 sudo apt install -y wev
 wev
 ```
 
-Нажми F5 (mm-режим) в окне `wev`, посмотри `sym ...`, закрой.
+Press F5 (mm-mode) in the `wev` window, look for the `sym ...` line, close.
 
-Дальше:
+Then:
 
 1. **System Settings → Shortcuts → Shortcuts → Add New → Command/URL Shortcut**
-2. Trigger: нажать F5 в mm-режиме (KDE запишет тот же keysym)
-3. Action: `<абсолютный_путь>/kwispr.sh toggle`
+2. Trigger: press F5 in mm-mode (KDE will capture the same keysym)
+3. Action: `<absolute_path>/kwispr.sh`
 4. Apply
 
-Если пользуешься двумя раскладками — добавь второй trigger для другой раскладки (у меня `Meta+H` en + `Meta+P` ru, оба на тот же скрипт).
+If you use multiple keyboard layouts, add a second trigger for the other layout (e.g. `Meta+H` on en + `Meta+P` on ru, both pointing to the same script).
 
-## Использование
+## Usage
 
-| Шаг | Что происходит |
+| Step | What happens |
 |---|---|
-| F5 | Запись стартует, висит уведомление «🎙 Listening» |
-| (говорить) | ffmpeg пишет в `~/.cache/kwispr/TS.wav` |
-| F5 | Ffmpeg завершается (FIFO + 'q' = valid WAV), уведомление меняется на «⏳ Processing» |
-| ~1-3 сек | Whisper транскрибирует, фильтр галлюцинаций чистит субтитровый мусор |
-| готово | `wl-copy` → `ydotool Ctrl+V` → текст вставлен. Уведомление «✅ Pasted» / «Ready (in clipboard)» |
+| F5 | Recording starts. Persistent "🎙 Listening" notification. |
+| (speak) | ffmpeg writes to `~/.cache/kwispr/TS.wav` |
+| F5 | ffmpeg shuts down gracefully (FIFO + 'q' → valid WAV). Notification → "⏳ Processing" |
+| ~1-3 s | Whisper transcribes, hallucination filter cleans subtitle artifacts |
+| done | `wl-copy` → `ydotool Ctrl+V` → text pasted. Notification → "✅ Pasted" / "Ready (in clipboard)" |
 
-Минимум 1 сек аудио — иначе «⚠ Too short» (Whisper на <1 сек стабильно галлюцинирует).
+Minimum 1 second of audio — otherwise "⚠ Too short" (Whisper reliably hallucinates on <1s).
 
-## Команды
+## Commands
 
-- `kwispr.sh toggle` — старт/стоп записи
-- `kwispr.sh retry <path.wav>` — повторить транскрипцию старого файла
+- `kwispr.sh` (or `kwispr.sh toggle`) — start/stop recording
+- `kwispr.sh retry <path.wav>` — retry transcription of an old WAV file
 
-## Параметры `.env`
+## Configuration (`.env`)
 
 ```bash
-OPENAI_API_KEY=sk-...            # обязательно
-KWISPR_LANGUAGE=                # пусто = autodetect (ru/en mix ок); или 'ru', 'en'
-KWISPR_AUTOPASTE=1              # 1 = Ctrl+V авто; 0 = только в буфер
+OPENAI_API_KEY=sk-...            # required
+KWISPR_LANGUAGE=                 # empty = autodetect (ok for mixed ru/en); or 'ru', 'en'
+KWISPR_AUTOPASTE=1               # 1 = auto Ctrl+V; 0 = clipboard only
+KWISPR_SOUNDS=1                  # 1 = audio cues; 0 = silent
+# KWISPR_SOUND_START=/path.wav   # optional custom sounds
+# KWISPR_SOUND_STOP=/path.wav
+# KWISPR_SOUND_READY=/path.wav
 ```
 
-## Архив и ротация
+## Archive and rotation
 
-Все записи + транскрипты в `~/.cache/kwispr/`. Файлы старше 30 дней удаляются автоматически (только `*.wav` и `*.txt`, служебные остаются).
+All recordings + transcripts are kept in `~/.cache/kwispr/`. Files older than 30 days are deleted automatically on each run (only `*.wav` and `*.txt`, service files are not touched).
 
-При сбое API:
-- `*.wav` остаётся в архиве
-- `last-failed.txt` содержит команду повтора
-- Команда копируется в буфер (чтобы сразу Ctrl+V в терминал)
+On API failure:
+- the WAV stays in the archive
+- `last-failed.txt` holds the retry command
+- the retry command is also copied into the clipboard (paste it into a terminal)
 
-## Особенности архитектуры (best practices)
+## Why these design choices (best practices)
 
-**Почему FIFO + 'q' вместо SIGTERM:**
-`ffmpeg -f pulse` на Wayland/PipeWire игнорирует SIGINT в некоторых сценариях ([ffmpeg trac #8369](https://trac.ffmpeg.org/ticket/8369)) и может не записать WAV-trailer при SIGTERM → 0 байт на выходе. Правильный graceful shutdown — write 'q' в stdin, что делается через FIFO, держащийся открытым фоновым `sleep`.
+**Why FIFO + 'q' instead of SIGTERM for ffmpeg:**
+`ffmpeg -f pulse` on Wayland/PipeWire sometimes ignores SIGINT ([ffmpeg trac #8369](https://trac.ffmpeg.org/ticket/8369)) and can leave a 0-byte WAV on SIGTERM (no trailer written). The documented graceful shutdown is writing `q` to stdin — done here via a FIFO held open by a background `sleep`.
 
-**Почему ydotool (не wtype/xdotool):**
-- `wtype` не работает на KDE Plasma Wayland — KWin не поддерживает virtual-keyboard protocol ([источник](https://gist.github.com/danielrosehill/d3913d4c8cc69acaf3ee7772771c2f1d))
-- `xdotool` — X11 only
-- `ydotool` работает через `/dev/uinput` на уровне ядра, обходит Wayland security model
+**Why ydotool (not wtype / xdotool):**
+- `wtype` doesn't work on KDE Plasma Wayland — KWin doesn't support the virtual-keyboard protocol ([reference](https://gist.github.com/danielrosehill/d3913d4c8cc69acaf3ee7772771c2f1d))
+- `xdotool` is X11 only
+- `ydotool` uses `/dev/uinput` at the kernel level, bypassing Wayland's input injection restrictions
 
-**Почему не ломает русскую раскладку:**
-ydotool шлёт **raw keycodes** (29=Ctrl, 47=V) — это стабильный hotkey независимо от раскладки. Текст приложение тянет из `wl-copy`-clipboard, где уже лежит правильный Unicode. Мы не "печатаем" текст через ydotool — известный баг [ReimuNotMoe/ydotool#249](https://github.com/ReimuNotMoe/ydotool/issues/249) с Unicode-type не применяется.
+**Why keyboard layouts don't break:**
+ydotool sends **raw keycodes** (29=Ctrl, 47=V) — a stable hotkey regardless of layout. The target app pulls the text from `wl-copy`'s clipboard, where the correct Unicode already lives. We never "type" the text through ydotool — so the known [unicode-type bug](https://github.com/ReimuNotMoe/ydotool/issues/249) doesn't apply.
 
-**Prompt + filter против галлюцинаций Whisper:**
-Whisper обучен на субтитрах и любит добавлять «Редактор субтитров А.Семкин», «Subtitles by ESO», «Thanks for watching» в конец на тишине или коротких записях. Два слоя защиты:
-1. Bilingual neutral prompt `"Voice dictation. Голосовая диктовка."` (не смещает распознавание, но снижает вероятность галлюцинации)
-2. Regex-фильтр известных паттернов после транскрипции (`sed -E 's/Редактор субтитров.*$//I'` и т.п.)
+**Prompt-less transcription:**
+Whisper was tested with various prompts. A bilingual prompt (e.g. "Voice dictation. Голосовая диктовка.") made the model occasionally **translate** speech into the prompt's language instead of transcribing as-is. We removed the prompt entirely — Whisper transcribes what it hears, and known hallucinations («Редактор субтитров», «Subtitles by ...», «Thanks for watching») are scrubbed by a post-processing regex.
 
-Плюс минимум 1 сек аудио перед отправкой в API (ниже — сразу «Too short», экономим API-запрос).
+Plus a minimum 1 second of audio before the API call (below that — immediate "Too short", saving an API round-trip).
 
 ## Troubleshooting
 
-| Симптом | Причина | Фикс |
+| Symptom | Cause | Fix |
 |---|---|---|
-| «No .env» | Не создан конфиг | `cp .env.example .env; chmod 600 .env` |
-| «OPENAI_API_KEY not set» | Placeholder вместо ключа | Впиши реальный `sk-...` в `.env` |
-| «Too short» при нормальной записи | pulse не успел открыться (sleep 0.05 недостаточно) | Увеличь задержку в `start_recording` |
-| Записывает, но не вставляет | ydotoold не запущен или `/dev/uinput` недоступен | `systemctl status ydotoold` + `ls -la /dev/uinput` (должно быть `crw-rw---- root input`) |
-| Вставляется не туда | Фокус был в другом окне в момент нажатия F5 | Ставь курсор куда надо **до** второго F5 |
-| «API 401» | Ключ неверный | Проверь на platform.openai.com |
-| «API 429» | Rate limit / баланс | Пополни баланс OpenAI |
-| Буфер пустой после ✅ | Wayland clipboard глюк | `systemctl --user restart xdg-desktop-portal` |
-| Нет уведомлений | `libnotify-bin` не стоит | `sudo apt install libnotify-bin` |
-| Запись не запускается | ffmpeg не видит микрофон | `pactl list sources short` — проверь default |
-| Зелёный LED-индикатор микрофона горит постоянно | Висячий ffmpeg-процесс после сбоя | `pkill -f "ffmpeg.*pulse"` |
+| "No .env" | Config not created | `cp .env.example .env; chmod 600 .env` |
+| "OPENAI_API_KEY not set" | Placeholder instead of a key | Put a real `sk-...` into `.env` |
+| "Too short" on normal speech | pulse hadn't opened yet (0.05s sleep too short) | Increase the `sleep` in `start_recording` |
+| Records but doesn't paste | ydotoold not running or `/dev/uinput` not accessible | `systemctl status ydotoold` + `ls -la /dev/uinput` (should be `crw-rw---- root input`) |
+| Pasted into wrong window | Focus was elsewhere when you pressed F5 | Place cursor in the target **before** the second F5 |
+| "API 401" | Wrong API key | Verify on platform.openai.com |
+| "API 429" | Rate limit / billing | Top up OpenAI balance |
+| Empty clipboard after ✅ | Wayland clipboard glitch | `systemctl --user restart xdg-desktop-portal` |
+| No notifications | `libnotify-bin` missing | `sudo apt install libnotify-bin` |
+| Recording doesn't start | ffmpeg can't see mic | `pactl list sources short` — check default |
+| Green mic LED stays on after a crash | Stale ffmpeg process | `pkill -f "ffmpeg.*pulse"` |
 
-### Отключить auto-paste
+### Disable auto-paste
 
-В `.env`: `KWISPR_AUTOPASTE=0`. Текст останется в буфере, вставишь руками Ctrl+V.
+In `.env`: `KWISPR_AUTOPASTE=0`. Text stays in the clipboard — paste manually with Ctrl+V.
 
-### Удалить ydotool полностью
+### Remove ydotool entirely
 
 ```bash
 sudo systemctl disable --now ydotoold
@@ -171,15 +175,15 @@ sudo gpasswd -d "$USER" input
 rm ~/.local/bin/ydotool ~/.local/bin/ydotoold
 ```
 
-Потом `KWISPR_AUTOPASTE=0` в `.env`.
+Then set `KWISPR_AUTOPASTE=0` in `.env`.
 
-## Что не входит в текущую версию
+## Not in scope (yet)
 
-- Локальный Whisper как fallback (cloud-only пока)
-- Push-to-talk (только toggle)
-- Бинд на кнопку мыши (через `input-remapper` если надо — можно руками)
-- GUI / tray-иконка (единственное persistent уведомление — достаточно)
+- Local Whisper as a fallback (cloud-only for now)
+- Push-to-talk mode (toggle only)
+- Mouse-button binding (use `input-remapper` manually if needed)
+- GUI / tray icon (the single persistent notification is enough)
 
-## Привязано к проекту
+## License
 
-Этот инструмент — часть dev-environment проекта `macubuntu`. Вероятно будет выделен в отдельный репозиторий когда стабилизируется, пока живёт тут.
+MIT — see [LICENSE](LICENSE).
