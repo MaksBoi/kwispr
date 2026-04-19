@@ -1,20 +1,21 @@
 # Kwispr
 
-**Toggle voice dictation for Linux / Wayland / KDE Plasma via OpenAI Whisper.** Press your hotkey → speak → press it again → text auto-pastes into the focused window.
+**Toggle voice dictation for Linux / Wayland / KDE Plasma via OpenAI Whisper.** Press your hotkey → speak → press it again → text is copied to your clipboard and auto-pasted into the focused window.
 
 ![shell](https://img.shields.io/badge/shell-bash-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey) ![platform](https://img.shields.io/badge/platform-Linux%20Wayland-orange)
 
 ## Why
 
-- **Stateless** — ~250 lines of bash, no daemons of our own, no GUI. KDE Shortcut runs the script, script exits. Next press runs it again.
-- **Works anywhere on Wayland** — VS Code, Claude Code CLI, browser, Slack, terminal. Auto-paste via `ydotool` through `/dev/uinput` (kernel-level, compositor-agnostic).
-- **Layout-independent** — sends raw Ctrl+V keycodes; apps pull Unicode text from the clipboard. Russian, English, mixed — works the same.
-- **Three-stage audio feedback** — pip-pip-pip on start, pup-pup-pup on stop, ding-dong when transcript is ready. You always know what's happening without looking.
+- **Stateless** — ~250 lines of bash, no daemons of our own, no GUI. The KDE Shortcut runs the script, the script exits. Next press runs it again.
+- **Clipboard first, auto-paste second** — the transcript always goes into the clipboard via `wl-copy`. On top of that, `ydotool` simulates Ctrl+V in the focused window for zero-friction pasting. If the focus was elsewhere, the text is still one Ctrl+V away.
+- **Works anywhere on Wayland** — VS Code, Claude Code CLI, browser, Slack, terminal. `ydotool` goes through `/dev/uinput` at the kernel level, bypassing Wayland's input-injection restrictions.
+- **Layout-independent** — sends raw Ctrl+V keycodes; apps pull Unicode text from the clipboard. Russian, English, and mixed text all work the same.
+- **Three-stage audio feedback** — pip-pip-pip on start, pup-pup-pup on stop, ding-dong when the transcript is ready. You always know what's happening without looking.
 - **Persistent status bubble** — one notification transforms Listening → Processing → Ready, never stacks.
-- **Never loses your speech** — on API/network failure, WAV is preserved and a retry command is put in your clipboard.
-- **Whisper hallucination filter** — post-processing regex scrubs the subtitle artifacts Whisper leaks on short audio («Редактор субтитров», «Subtitles by», «Thanks for watching»).
+- **Never loses your speech** — on API/network failure the WAV is preserved and a retry command is copied into your clipboard.
+- **Whisper hallucination filter** — a post-processing regex scrubs the subtitle artifacts Whisper leaks on short audio («Редактор субтитров», «Subtitles by», «Thanks for watching»).
 
-**Tested on:** Ubuntu 25.10 + KDE Plasma 6 + PipeWire. Should work on any Linux with Wayland + `wl-clipboard` + `libnotify-bin`.
+**Tested on:** Kubuntu 25.10 + KDE Plasma 6 + PipeWire. Should work on any Linux with Wayland + `wl-clipboard` + `libnotify-bin`.
 
 ## Architecture
 
@@ -28,9 +29,9 @@ Hotkey (KDE Custom Shortcut)
                  curl POST https://api.openai.com/v1/audio/transcriptions
                    model=whisper-1, temperature=0
                  sed-filter subtitle hallucinations
-                 wl-copy $transcript
-                 ydotool key 29:1 47:1 47:0 29:0  (Ctrl+V if enabled)
-                 notify-send replace → "✅ Pasted" / "Ready (in clipboard)"
+                 wl-copy $transcript                        (always)
+                 ydotool key 29:1 47:1 47:0 29:0            (Ctrl+V, if enabled)
+                 notify-send replace → "✅ Pasted" or "Ready (in clipboard)"
 ```
 
 **No daemons of our own.** The script is stateless, launched from the KDE Shortcut and exits after each press. State lives in lockfiles under `~/.cache/kwispr/`. The only persistent component is the optional `ydotoold` systemd service (for auto-paste).
@@ -44,7 +45,7 @@ Hotkey (KDE Custom Shortcut)
 | `jq` | parse JSON response | APT |
 | `wl-clipboard` | `wl-copy` for clipboard | APT |
 | `libnotify-bin` | `notify-send` for the persistent status bubble | APT |
-| `pipewire-pulse` | pulse-compat layer on PipeWire | ships with Ubuntu 25.10 |
+| `pipewire-pulse` | pulse-compat layer on PipeWire | ships with Kubuntu 25.10 |
 | `ydotool` v1.0.4 (optional) | auto-paste Ctrl+V via `/dev/uinput` | GitHub release → `~/.local/bin/` |
 
 **Why `ydotool` is downloaded from GitHub instead of APT:** the Ubuntu APT version is an ancient 0.1.8 without the `key` command or daemon. We need 1.0.4+.
@@ -71,7 +72,7 @@ After re-login: `systemctl status ydotoold` should show `active (running)`.
 
 ## Binding a hotkey
 
-Pick any key or combination — a regular `F5`, a multimedia key, a mouse button, whatever you like. Bind it through KDE:
+Pick any key or combination — a regular `F5`, a modifier combo, a multimedia key. Bind it through KDE:
 
 1. **System Settings → Shortcuts → Shortcuts → Add New → Command/URL Shortcut**
 2. **Trigger:** press the key (or combo) you want to use
@@ -101,9 +102,11 @@ The same physical key can send different keysyms depending on the active layout 
 | (speak) | ffmpeg writes to `~/.cache/kwispr/TS.wav` |
 | Press hotkey again | ffmpeg shuts down gracefully (FIFO + 'q' → valid WAV). Notification → "⏳ Processing" |
 | ~1-3 s | Whisper transcribes, hallucination filter cleans subtitle artifacts |
-| done | `wl-copy` → `ydotool Ctrl+V` → text pasted. Notification → "✅ Pasted" / "Ready (in clipboard)" |
+| done | Text lands in the clipboard, and ydotool simulates Ctrl+V in the focused window. Notification → "✅ Pasted" (auto-paste worked) or "Ready (in clipboard)" (paste manually with Ctrl+V) |
 
-Minimum 1 second of audio — otherwise "⚠ Too short" (Whisper reliably hallucinates on <1s).
+The text is **always** in the clipboard — even if the wrong window was focused, or auto-paste is disabled, Ctrl+V still works.
+
+Minimum 1 second of audio is required — otherwise "⚠ Too short" (Whisper reliably hallucinates on <1s).
 
 ## Commands
 
@@ -185,8 +188,9 @@ Then set `KWISPR_AUTOPASTE=0` in `.env`.
 
 - Local Whisper as a fallback (cloud-only for now)
 - Push-to-talk mode (toggle only)
-- Mouse-button binding (use `input-remapper` manually if needed)
 - GUI / tray icon (the single persistent notification is enough)
+
+> Note: KDE Custom Shortcuts can't bind to mouse buttons directly. If you want a mouse-button trigger, use a tool like `input-remapper` to remap the button to a keyboard shortcut, then bind that shortcut to kwispr.
 
 ## License
 
