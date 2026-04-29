@@ -110,7 +110,7 @@ No cloud key is required for local mode. Keep `KWISPR_API_KEY=` empty when `KWIS
 ## Troubleshooting local mode
 
 | Symptom | Likely cause | Fix |
-|---|---|---|---|
+|---|---|---|
 | `curl: (7) Failed to connect` | Local server is not running or the port does not match `.env` | Start the Python stub or Rust runtime, then check `/health`. |
 | `[stub transcript]` | You are using `kwispr-local-stt-server.py` | Use the Rust runtime for actual model inference. |
 | `unknown model` | `KWISPR_MODEL` is not an id in `models/local-stt-catalog.json` | Run `./kwispr-models.py list` and copy an exact model id. |
