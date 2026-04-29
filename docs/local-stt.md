@@ -72,6 +72,8 @@ KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
   --catalog ../models/local-stt-catalog.json
 ```
 
+Validation caveat: this branch wires the real `transcribe-rs` runtime scaffold and catalog integration, but end-to-end validation with the real GigaAM and Parakeet model artifacts is still pending. Track that follow-up in [issue #5](https://github.com/blockedby/kwispr/issues/5); until it is closed, treat those engines as integrated but not yet production-validated.
+
 The endpoint is OpenAI-compatible:
 
 ```bash
