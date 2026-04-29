@@ -309,6 +309,15 @@ transcribe() {
     -e 's/^[[:space:]]+//; s/[[:space:]]+$//')"
 
   if [[ -z "$text" ]]; then
+    # Local VAD servers may intentionally return an empty transcript for
+    # silence/no-speech audio. Treat that as a clean skip instead of an API
+    # failure that pollutes last-failed.txt and the clipboard.
+    if [[ "$KWISPR_BACKEND" == "openai-transcriptions" && "$KWISPR_API_URL" == http://127.0.0.1:* ]]; then
+      rm -f "$txt"
+      status "⚠ No speech" 2000
+      status_clear
+      return 0
+    fi
     local retry_cmd="$SCRIPT_DIR/kwispr.sh retry \"$wav\""
     echo "$retry_cmd" > "$LAST_FAILED"
     echo -n "$retry_cmd" | copy_text || true

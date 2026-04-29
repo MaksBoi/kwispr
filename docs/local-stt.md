@@ -80,7 +80,7 @@ ggml_vulkan: 0 = NVIDIA GeForce RTX 3080 Ti
 whisper_backend_init_gpu: using Vulkan0 backend
 ```
 
-Validation status: GigaAM v3 and Whisper Large v3 Turbo have been validated with real local artifacts. Whisper Turbo was validated on an NVIDIA RTX 3080 Ti through Vulkan. Parakeet V3 still needs real-artifact validation; track that follow-up in [issue #5](https://github.com/blockedby/kwispr/issues/5).
+Validation status: GigaAM v3, Whisper Large v3 Turbo, and Parakeet V3 have been validated with real local artifacts. Whisper Turbo was validated on an NVIDIA RTX 3080 Ti through Vulkan.
 
 The endpoint is OpenAI-compatible:
 
@@ -109,21 +109,37 @@ Loaded engines are cached by model id for the life of the process, so repeated r
 
 ## Optional VAD preprocessing
 
-The Rust runtime has an optional lightweight VAD-style preprocessing hook before local inference. It is disabled by default so existing local and cloud/OpenRouter/OpenAI behavior stays unchanged. Enable it only for the local runtime:
+The Rust runtime has optional VAD preprocessing before local inference. It is disabled by default so existing local and cloud/OpenRouter/OpenAI behavior stays unchanged.
+
+Energy/RMS provider, dependency-light and conservative:
 
 ```bash
 KWISPR_VAD_ENABLED=1 \
+KWISPR_VAD_PROVIDER=energy \
 KWISPR_VAD_THRESHOLD=0.01 \
 KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
   ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
   --catalog ../models/local-stt-catalog.json
 ```
 
-Equivalent CLI flags are available: `--vad-enabled true`, `--vad-threshold`, `--vad-frame-ms`, `--vad-min-speech-ms`, and `--vad-padding-ms`. `/health` reports the active VAD config.
+Silero ONNX provider, closer to Handy-style neural VAD:
 
-Current behavior is a safe energy/RMS gate rather than full Silero ONNX VAD: audio is split into frames, frames above `KWISPR_VAD_THRESHOLD` are treated as voiced, leading/trailing silence is trimmed with padding, and clips with less than `KWISPR_VAD_MIN_SPEECH_MS` of voiced frames return an empty transcript without loading/running a model. This handles synthetic silence and short noise safely, reduces junk audio sent to STT, and helps avoid hallucinated transcripts from no-voice clips.
+```bash
+mkdir -p ~/.local/share/kwispr/models
+curl -L -o ~/.local/share/kwispr/models/silero_vad_v4.onnx \
+  https://blob.handy.computer/silero_vad_v4.onnx
+KWISPR_VAD_ENABLED=1 \
+KWISPR_VAD_PROVIDER=silero \
+KWISPR_VAD_MODEL=~/.local/share/kwispr/models/silero_vad_v4.onnx \
+KWISPR_VAD_THRESHOLD=0.3 \
+KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
+  ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
+  --catalog ../models/local-stt-catalog.json
+```
 
-Why VAD matters: it trims leading/trailing silence, detects voice vs. non-voice audio, feeds less junk into STT, lowers latency for padded recordings, and reduces hallucinations on silence/noise. The config is intentionally compatible with a future Handy/Silero-style VAD provider, but Silero ONNX model integration is not implemented yet; follow-up: https://github.com/blockedby/kwispr/issues/8.
+Equivalent CLI flags are available: `--vad-enabled true`, `--vad-provider energy|silero`, `--vad-model`, `--vad-threshold`, `--vad-frame-ms`, `--vad-min-speech-ms`, and `--vad-padding-ms`. `/health` reports the active VAD config. Silero uses 30 ms / 480-sample frames at 16 kHz and defaults to threshold `0.3`; energy VAD defaults to threshold `0.01`.
+
+Both providers trim leading/trailing non-speech and return an empty transcript for no-speech/short-noise clips before STT model inference. `kwispr.sh` treats empty responses from a local `127.0.0.1` STT endpoint as a clean `No speech` skip rather than an API failure. This reduces junk audio sent to STT, lowers latency for padded recordings, and helps avoid hallucinated transcripts from silence/noise.
 
 ## Model recommendations
 
