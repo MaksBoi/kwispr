@@ -1,6 +1,31 @@
 # Local STT roadmap
 
-Kwispr can already talk to an OpenAI-compatible local transcription endpoint through:
+Kwispr includes a small local STT server skeleton for wiring and smoke testing. It is intentionally stub-only for now: it accepts the OpenAI-compatible transcription request and returns `{"text":"[stub transcript]"}` without running model inference.
+
+Start the skeleton server:
+
+```bash
+./kwispr-local-stt-server.py --host 127.0.0.1 --port 9000
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:9000/health
+```
+
+Stub transcription request:
+
+```bash
+printf 'dummy audio bytes' >/tmp/kwispr-dummy.wav
+curl -sS http://127.0.0.1:9000/v1/audio/transcriptions \
+  -F model=gigaam-v3-e2e-ctc \
+  -F response_format=json \
+  -F language=ru \
+  -F file=@/tmp/kwispr-dummy.wav
+```
+
+Kwispr can talk to the OpenAI-compatible local transcription endpoint through:
 
 ```env
 KWISPR_BACKEND=openai-transcriptions
@@ -15,7 +40,7 @@ The repository now includes a machine-readable local model catalog at:
 models/local-stt-catalog.json
 ```
 
-Use `kwispr-models.py` to list, download, and verify catalog artifacts. Kwispr does not run these models yet; the installed artifacts are intended for future local `transcribe-rs` server slices.
+Use `kwispr-models.py` to list, download, and verify catalog artifacts. Kwispr does not run these models yet; the installed artifacts are intended for future local inference server slices.
 
 ## Downloading models
 

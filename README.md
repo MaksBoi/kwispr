@@ -159,7 +159,15 @@ KWISPR_PULSE_SOURCE=default
 KWISPR_TRANSCRIPTION_PROMPT='Transcribe this audio exactly as spoken. The speech may be Russian, English, or mixed. Do not translate. Return only the transcript.'
 ```
 
-**Local OpenAI-compatible Whisper server:**
+**Local OpenAI-compatible STT server stub:**
+
+This branch includes a small standard-library server skeleton. It exposes `GET /health` and `POST /v1/audio/transcriptions`, accepts OpenAI-style multipart fields, and returns stub JSON (`{"text":"[stub transcript]"}`) until a later slice adds real inference.
+
+```bash
+./kwispr-local-stt-server.py --host 127.0.0.1 --port 9000
+```
+
+In `.env`, point Kwispr at the local endpoint without changing `kwispr.sh`:
 
 ```bash
 KWISPR_BACKEND=openai-transcriptions
