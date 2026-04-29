@@ -15,7 +15,22 @@ The repository now includes a machine-readable local model catalog at:
 models/local-stt-catalog.json
 ```
 
-This catalog is metadata only. Kwispr does not download or run these models yet. It is intended to support future stacked PRs for a downloader and local `transcribe-rs` server.
+Use `kwispr-models.py` to list, download, and verify catalog artifacts. Kwispr does not run these models yet; the installed artifacts are intended for future local `transcribe-rs` server slices.
+
+## Downloading models
+
+```bash
+# Show install status for all catalog entries
+./kwispr-models.py list
+
+# Download the Russian GigaAM model into ~/.local/share/kwispr/models
+./kwispr-models.py download gigaam-v3-e2e-ctc
+
+# Verify the installed model
+./kwispr-models.py verify gigaam-v3-e2e-ctc
+```
+
+Set `KWISPR_MODEL_DIR=/path/to/models` or pass `--model-dir /path/to/models` to override the install directory. The helper verifies artifact SHA256 before installation, extracts `.tar.gz` directory artifacts safely, places single-file artifacts directly, and skips redownloading already-valid models.
 
 ## Initial catalog slice
 
@@ -43,10 +58,9 @@ Handy already demonstrates a working local STT architecture with downloadable mo
 
 ## Future slices
 
-1. model downloader and checksum verification
-2. local OpenAI-compatible server skeleton
-3. real `transcribe-rs` inference runtime
-4. docs and integration polish
-5. optional VAD preprocessing
+1. local OpenAI-compatible server skeleton
+2. real `transcribe-rs` inference runtime
+3. docs and integration polish
+4. optional VAD preprocessing
 
 VAD is planned because it can trim silence, detect voice/non-voice audio, avoid feeding junk into STT, and reduce hallucinated transcripts.

@@ -170,13 +170,17 @@ KWISPR_API_KEY=
 
 ### Local STT model catalog
 
-Kwispr includes a metadata-only catalog for future local/offline STT support:
+Kwispr includes a local/offline STT model catalog and a small downloader helper:
 
-```text
-models/local-stt-catalog.json
+```bash
+./kwispr-models.py list
+./kwispr-models.py download gigaam-v3-e2e-ctc
+./kwispr-models.py verify gigaam-v3-e2e-ctc
 ```
 
-The initial catalog slice tracks Handy-compatible model artifacts for GigaAM v3, Parakeet V3, and Whisper Large v3 Turbo. Kwispr does not download or run these models yet; see [`docs/local-stt.md`](docs/local-stt.md) for the local backend roadmap.
+Models install under `~/.local/share/kwispr/models` by default. Set `KWISPR_MODEL_DIR=/path/to/models` or pass `--model-dir /path/to/models` to use another location. Downloads are SHA256-verified before install; repeated runs skip models that are already valid.
+
+The initial catalog tracks Handy-compatible model artifacts for GigaAM v3, Parakeet V3, and Whisper Large v3 Turbo. Kwispr does not run these models yet; see [`docs/local-stt.md`](docs/local-stt.md) for the local backend roadmap.
 
 ## Archive and rotation
 
