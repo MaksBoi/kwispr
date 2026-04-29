@@ -15,6 +15,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+
+class DirectoryVerificationError(Exception):
+    """Directory model contents do not match the installed manifest."""
+
+
 DEFAULT_CATALOG = Path(__file__).resolve().parent / "models" / "local-stt-catalog.json"
 DEFAULT_MODEL_DIR = Path(os.environ.get("KWISPR_MODEL_DIR", "~/.local/share/kwispr/models")).expanduser()
 MANIFEST = ".kwispr-model.json"
@@ -57,13 +62,47 @@ def read_manifest(root: Path, model: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
+def directory_tree_manifest(target: Path) -> dict[str, Any]:
+    """Return a stable manifest for a directory install, excluding Kwispr metadata."""
+    files: dict[str, str] = {}
+    dirs: list[str] = []
+    for path in sorted(target.rglob("*")):
+        rel = path.relative_to(target).as_posix()
+        if rel == MANIFEST:
+            continue
+        if path.is_symlink():
+            raise DirectoryVerificationError(f"unsupported symlink in model directory: {rel}")
+        if path.is_file():
+            files[rel] = sha256_file(path)
+        elif path.is_dir():
+            dirs.append(rel)
+        else:
+            raise DirectoryVerificationError(f"unsupported file type in model directory: {rel}")
+    return {"dirs": dirs, "files": files}
+
+
+def verify_directory_install(root: Path, model: dict[str, Any]) -> bool:
+    artifact = model["artifact"]
+    target = model_path(root, model)
+    manifest = read_manifest(root, model)
+    if not target.is_dir() or not manifest or manifest.get("artifact_sha256") != artifact["sha256"]:
+        return False
+    expected_tree = manifest.get("tree")
+    if not isinstance(expected_tree, dict):
+        return False
+    try:
+        actual_tree = directory_tree_manifest(target)
+    except DirectoryVerificationError:
+        return False
+    return actual_tree == expected_tree
+
+
 def is_installed(root: Path, model: dict[str, Any]) -> bool:
     artifact = model["artifact"]
     target = model_path(root, model)
     expected = artifact["sha256"]
     if artifact.get("is_directory"):
-        manifest = read_manifest(root, model)
-        return bool(target.is_dir() and manifest and manifest.get("artifact_sha256") == expected)
+        return verify_directory_install(root, model)
     return target.is_file() and sha256_file(target) == expected
 
 
@@ -76,6 +115,8 @@ def write_manifest(root: Path, model: dict[str, Any]) -> None:
         "artifact_sha256": model["artifact"]["sha256"],
         "source_url": model["artifact"]["url"],
     }
+    if model["artifact"].get("is_directory"):
+        data["tree"] = directory_tree_manifest(model_path(root, model))
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
