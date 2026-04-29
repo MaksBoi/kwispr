@@ -1,8 +1,11 @@
 # Local STT roadmap
 
-Kwispr includes a small local STT server skeleton for wiring and smoke testing. It is intentionally stub-only for now: it accepts the OpenAI-compatible transcription request and returns `{"text":"[stub transcript]"}` without running model inference.
+Kwispr includes two local STT server entry points:
 
-Start the skeleton server:
+- `kwispr-local-stt-server.py` remains a tiny Python stub for wiring smoke tests.
+- `rust-local-stt/` is the real inference runtime scaffold. It exposes the same OpenAI-compatible endpoint, resolves models from `models/local-stt-catalog.json`, loads Handy-compatible artifacts from `$KWISPR_MODEL_DIR` or `~/.local/share/kwispr/models`, dispatches GigaAM / Parakeet / Whisper by `engine_type`, and caches loaded engines in-process.
+
+Start the legacy stub server:
 
 ```bash
 ./kwispr-local-stt-server.py --host 127.0.0.1 --port 9000
@@ -40,7 +43,7 @@ The repository now includes a machine-readable local model catalog at:
 models/local-stt-catalog.json
 ```
 
-Use `kwispr-models.py` to list, download, and verify catalog artifacts. Kwispr does not run these models yet; the installed artifacts are intended for future local inference server slices.
+Use `kwispr-models.py` to list, download, and verify catalog artifacts. The Rust runtime uses these installed artifacts for local inference.
 
 ## Downloading models
 
@@ -56,6 +59,43 @@ Use `kwispr-models.py` to list, download, and verify catalog artifacts. Kwispr d
 ```
 
 Set `KWISPR_MODEL_DIR=/path/to/models` or pass `--model-dir /path/to/models` to override the install directory. The helper verifies artifact SHA256 before installation, extracts `.tar.gz` directory artifacts safely, places single-file artifacts directly, and skips redownloading already-valid models.
+
+## Rust runtime
+
+Build and run when Rust/Cargo and native transcribe-rs dependencies are available:
+
+```bash
+cd rust-local-stt
+cargo build --release
+KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
+  ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
+  --catalog ../models/local-stt-catalog.json
+```
+
+The endpoint is OpenAI-compatible:
+
+```bash
+curl -sS http://127.0.0.1:9000/v1/audio/transcriptions \
+  -F model=gigaam-v3-e2e-ctc \
+  -F response_format=json \
+  -F language=ru \
+  -F file=@sample.wav
+```
+
+Expected success response:
+
+```json
+{"text":"..."}
+```
+
+Clear HTTP errors are returned as `{"error":"..."}`:
+
+- `400` for malformed multipart, missing fields, unsupported response format, or invalid WAV input
+- `404` for unknown catalog model ids
+- `422` for model resolution, load, or runtime transcription failures
+- `500` for unexpected server failures
+
+Loaded engines are cached by model id for the life of the process, so repeated requests to the same model do not reload the model.
 
 ## Initial catalog slice
 
