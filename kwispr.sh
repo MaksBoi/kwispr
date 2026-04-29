@@ -339,11 +339,28 @@ transcribe() {
   # Falls back silently if ydotool unavailable or daemon not running.
   local pasted=0
   if [[ "${KWISPR_AUTOPASTE:-1}" == "1" ]] && command -v ydotool >/dev/null 2>&1; then
-    # Give wl-copy a moment to register the clipboard offer with the compositor
-    sleep 0.15
-    # 29 = LEFTCTRL, 47 = V
+    # Give wl-copy a moment to register the clipboard offer with the compositor.
+    sleep "${KWISPR_AUTOPASTE_DELAY:-0.30}"
+    local paste_keys
+    case "${KWISPR_PASTE_HOTKEY:-ctrl-v}" in
+      ctrl-v)
+        # 29 = LEFTCTRL, 47 = V
+        paste_keys=(29:1 47:1 47:0 29:0)
+        ;;
+      ctrl-shift-v)
+        # 29 = LEFTCTRL, 42 = LEFTSHIFT, 47 = V
+        paste_keys=(29:1 42:1 47:1 47:0 42:0 29:0)
+        ;;
+      shift-insert)
+        # 42 = LEFTSHIFT, 110 = INSERT. Often more layout-agnostic than Ctrl+V.
+        paste_keys=(42:1 110:1 110:0 42:0)
+        ;;
+      *)
+        paste_keys=(29:1 47:1 47:0 29:0)
+        ;;
+    esac
     if YDOTOOL_SOCKET=/run/user/$(id -u)/.ydotool_socket \
-         ydotool key 29:1 47:1 47:0 29:0 2>/dev/null; then
+         ydotool key "${paste_keys[@]}" 2>/dev/null; then
       pasted=1
     fi
   fi
