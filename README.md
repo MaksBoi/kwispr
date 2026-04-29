@@ -28,8 +28,8 @@ Hotkey (KDE Custom Shortcut)
        │         notify-send "🎙 Listening" (persistent)
        └─ stop:  write 'q' to FIFO → ffmpeg flushes WAV
                  notify-send replace → "⏳ Processing"
-                 curl POST https://api.openai.com/v1/audio/transcriptions
-                   model=whisper-1, temperature=0
+                 curl POST $KWISPR_API_URL
+                   model=$KWISPR_MODEL, backend=$KWISPR_BACKEND
                  sed-filter subtitle hallucinations
                  wl-copy $transcript                        (always)
                  ydotool key 29:1 47:1 47:0 29:0            (Ctrl+V, if enabled)
@@ -60,7 +60,7 @@ cd kwispr
 ./setup.sh                       # installs deps, prompts for ydotool install
 cp .env.example .env
 chmod 600 .env
-# Put your OPENAI_API_KEY into .env
+# Put your API key/backend settings into .env
 ```
 
 When `ydotool` is installed by `setup.sh`:
@@ -118,13 +118,54 @@ Minimum 1 second of audio is required — otherwise "⚠ Too short" (Whisper rel
 ## Configuration (`.env`)
 
 ```bash
-OPENAI_API_KEY=sk-...            # required
+KWISPR_BACKEND=openai-transcriptions
+KWISPR_API_URL=https://api.openai.com/v1/audio/transcriptions
+KWISPR_MODEL=whisper-1
+KWISPR_API_KEY=sk-...            # required for OpenAI/OpenRouter; optional for local servers
 KWISPR_LANGUAGE=                 # empty = autodetect (ok for mixed ru/en); or 'ru', 'en'
 KWISPR_AUTOPASTE=1               # 1 = auto Ctrl+V; 0 = clipboard only
 KWISPR_SOUNDS=1                  # 1 = audio cues; 0 = silent
 # KWISPR_SOUND_START=/path.wav   # optional custom sounds
 # KWISPR_SOUND_STOP=/path.wav
 # KWISPR_SOUND_READY=/path.wav
+```
+
+### Alternative transcription backends
+
+Kwispr defaults to OpenAI Whisper, but the transcription call is configurable. It supports OpenAI-compatible `/v1/audio/transcriptions` backends and OpenRouter's `/chat/completions` audio-input API.
+
+**OpenAI (default):**
+
+```bash
+KWISPR_API_URL=https://api.openai.com/v1/audio/transcriptions
+KWISPR_MODEL=whisper-1
+KWISPR_API_KEY=sk-...
+```
+
+**OpenRouter audio input:**
+
+OpenRouter processes audio inputs through chat completions with base64 `input_audio` content. Use an audio-capable model such as Gemini Flash:
+
+```bash
+KWISPR_BACKEND=openrouter-chat
+KWISPR_API_URL=https://openrouter.ai/api/v1/chat/completions
+KWISPR_MODEL=google/gemini-2.5-flash
+KWISPR_API_KEY=sk-or-...
+# Optional app attribution headers:
+KWISPR_HTTP_REFERER=https://github.com/MaksBoi/kwispr
+KWISPR_APP_TITLE=kwispr
+KWISPR_AUDIO_FORMAT=wav
+KWISPR_PULSE_SOURCE=default
+KWISPR_TRANSCRIPTION_PROMPT='Transcribe this audio exactly as spoken. The speech may be Russian, English, or mixed. Do not translate. Return only the transcript.'
+```
+
+**Local OpenAI-compatible Whisper server:**
+
+```bash
+KWISPR_BACKEND=openai-transcriptions
+KWISPR_API_URL=http://127.0.0.1:9000/v1/audio/transcriptions
+KWISPR_MODEL=large-v3-turbo
+KWISPR_API_KEY=
 ```
 
 ## Archive and rotation
@@ -159,7 +200,7 @@ Plus a minimum 1 second of audio before the API call (below that — immediate "
 | Symptom | Cause | Fix |
 |---|---|---|
 | "No .env" | Config not created | `cp .env.example .env; chmod 600 .env` |
-| "OPENAI_API_KEY not set" | Placeholder instead of a key | Put a real `sk-...` into `.env` |
+| "KWISPR_API_KEY/OPENAI_API_KEY not set" | Placeholder instead of a key | Put a real `sk-...` or `sk-or-...` into `.env`, or use a local backend URL |
 | "Too short" on normal speech | pulse hadn't opened yet (0.05s sleep too short) | Increase the `sleep` in `start_recording` |
 | Records but doesn't paste | ydotoold not running or `/dev/uinput` not accessible | `systemctl status ydotoold` + `ls -la /dev/uinput` (should be `crw-rw---- root input`) |
 | Pasted into wrong window | Focus was elsewhere when you pressed the hotkey | Place cursor in the target **before** pressing the hotkey to stop |
@@ -188,7 +229,7 @@ Then set `KWISPR_AUTOPASTE=0` in `.env`.
 
 ## Not in scope (yet)
 
-- Local Whisper as a fallback (cloud-only for now)
+- Bundled local Whisper runtime (use a separate OpenAI-compatible local server instead)
 - Push-to-talk mode (toggle only)
 - GUI / tray icon (the single persistent notification is enough)
 
