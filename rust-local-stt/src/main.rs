@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use axum::{extract::{Multipart, State}, http::StatusCode, response::{IntoResponse, Response}, routing::{get, post}, Json, Router};
+use axum::{extract::{rejection::MultipartRejection, Multipart, State}, http::StatusCode, response::{IntoResponse, Response}, routing::{get, post}, Json, Router};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env, io::Cursor, net::SocketAddr, path::{Path, PathBuf}, sync::Mutex};
@@ -33,14 +33,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn transcribe(State(state): State<AppState>, mut mp: Multipart) -> std::result::Result<Json<Transcription>, ApiError> {
+async fn transcribe(State(state): State<AppState>, mp: std::result::Result<Multipart, MultipartRejection>) -> std::result::Result<Json<Transcription>, ApiError> {
+    let mut mp = mp.map_err(ApiError::multipart_rejection)?;
     let mut model = None; let mut lang = None; let mut format = "json".to_string(); let mut file = None;
-    while let Some(field) = mp.next_field().await.map_err(ApiError::bad_request)? {
+    while let Some(field) = mp.next_field().await.map_err(ApiError::multipart_error)? {
         match field.name().unwrap_or("") {
-            "model" => model = Some(field.text().await.map_err(ApiError::bad_request)?),
-            "language" => lang = Some(field.text().await.map_err(ApiError::bad_request)?),
-            "response_format" => format = field.text().await.map_err(ApiError::bad_request)?,
-            "file" => file = Some(field.bytes().await.map_err(ApiError::bad_request)?.to_vec()),
+            "model" => model = Some(field.text().await.map_err(ApiError::multipart_error)?),
+            "language" => lang = Some(field.text().await.map_err(ApiError::multipart_error)?),
+            "response_format" => format = field.text().await.map_err(ApiError::multipart_error)?,
+            "file" => file = Some(field.bytes().await.map_err(ApiError::multipart_error)?.to_vec()),
             _ => {}
         }
     }
@@ -81,5 +82,16 @@ fn home_models_dir() -> PathBuf { env::var("HOME").map(PathBuf::from).unwrap_or_
 fn arg(name: &str) -> Option<String> { let mut args = env::args().skip(1); while let Some(a) = args.next() { if a == name { return args.next(); } } None }
 
 struct ApiError(StatusCode, String);
-impl ApiError { fn bad_request(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::BAD_REQUEST, e.into().to_string()) } fn not_found(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::NOT_FOUND, e.into().to_string()) } fn runtime(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::UNPROCESSABLE_ENTITY, e.into().to_string()) } fn internal(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::INTERNAL_SERVER_ERROR, e.into().to_string()) } }
+impl ApiError {
+    fn bad_request(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::BAD_REQUEST, e.into().to_string()) }
+    fn not_found(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::NOT_FOUND, e.into().to_string()) }
+    fn runtime(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::UNPROCESSABLE_ENTITY, e.into().to_string()) }
+    fn internal(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::INTERNAL_SERVER_ERROR, e.into().to_string()) }
+    fn multipart_rejection(e: MultipartRejection) -> Self { Self(client_error_status(e.status()), e.body_text()) }
+    fn multipart_error(e: axum::extract::multipart::MultipartError) -> Self { Self(client_error_status(e.status()), e.body_text()) }
+}
+
+fn client_error_status(status: StatusCode) -> StatusCode {
+    if status.is_client_error() { status } else { StatusCode::BAD_REQUEST }
+}
 impl IntoResponse for ApiError { fn into_response(self) -> Response { (self.0, Json(ErrorBody { error: self.1 })).into_response() } }
