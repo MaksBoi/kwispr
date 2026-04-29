@@ -9,8 +9,8 @@ static ENGINE_CACHE: Lazy<Mutex<HashMap<String, LoadedEngine>>> = Lazy::new(|| M
 
 #[derive(Clone)] struct AppState { catalog: Catalog, model_dir: PathBuf, vad: VadConfig }
 #[derive(Clone, Deserialize)] struct Catalog { models: Vec<ModelInfo> }
-#[derive(Clone, Deserialize)] struct ModelInfo { id: String, name: String, engine_type: String, artifact: Artifact, #[serde(default)] supports_language_selection: bool }
-#[derive(Clone, Deserialize)] struct Artifact { filename: String, #[serde(default)] is_directory: bool }
+#[derive(Clone, Debug, Deserialize)] struct ModelInfo { id: String, name: String, engine_type: String, artifact: Artifact, #[serde(default)] supports_language_selection: bool }
+#[derive(Clone, Debug, Deserialize)] struct Artifact { filename: String, #[serde(default)] is_directory: bool }
 #[derive(Serialize)] struct Health { status: &'static str, vad: VadConfig }
 #[derive(Serialize)] struct Transcription { text: String }
 #[derive(Serialize)] struct ErrorBody { error: String }
@@ -31,6 +31,7 @@ enum VadDecision {
     NoSpeech,
 }
 
+#[derive(Debug)]
 struct PreprocessedAudio { samples: Vec<f32>, decision: VadDecision }
 struct DecodedAudio { samples: Vec<f32>, sample_rate: u32 }
 
@@ -72,12 +73,16 @@ async fn transcribe(State(state): State<AppState>, mut mp: Multipart) -> std::re
     if format != "json" { return Err(ApiError::bad_request(anyhow!("only response_format=json is supported"))); }
     let model_id = model.ok_or_else(|| ApiError::bad_request(anyhow!("missing model field")))?;
     let bytes = file.ok_or_else(|| ApiError::bad_request(anyhow!("missing audio file field: file")))?;
+    let info = resolve_model(&state.catalog, &model_id)?;
     let audio = decode_wav(&bytes).map_err(ApiError::bad_request)?;
     let preprocessed = preprocess_audio(audio, &state.vad).map_err(ApiError::bad_request)?;
     if preprocessed.decision == VadDecision::NoSpeech { return Ok(Json(Transcription { text: String::new() })); }
-    let info = state.catalog.models.iter().find(|m| m.id == model_id).cloned().ok_or_else(|| ApiError::not_found(anyhow!("unknown model: {model_id}")))?;
     let text = tokio::task::spawn_blocking(move || transcribe_blocking(&state.model_dir, &info, preprocessed.samples, lang)).await.map_err(|e| ApiError::internal(anyhow!(e)))??;
     Ok(Json(Transcription { text }))
+}
+
+fn resolve_model(catalog: &Catalog, model_id: &str) -> std::result::Result<ModelInfo, ApiError> {
+    catalog.models.iter().find(|m| m.id == model_id).cloned().ok_or_else(|| ApiError::not_found(anyhow!("unknown model: {model_id}")))
 }
 
 fn transcribe_blocking(model_dir: &Path, info: &ModelInfo, audio: Vec<f32>, language: Option<String>) -> std::result::Result<String, ApiError> {
@@ -117,6 +122,7 @@ fn decode_wav(bytes: &[u8]) -> Result<DecodedAudio> {
 }
 
 fn preprocess_audio(audio: DecodedAudio, vad: &VadConfig) -> Result<PreprocessedAudio> {
+    vad.validate()?;
     if !vad.enabled { return Ok(PreprocessedAudio { samples: audio.samples, decision: VadDecision::Disabled }); }
     let frame = samples_for_ms(audio.sample_rate, vad.frame_ms).max(1);
     let min_speech_frames = frames_for_ms(vad.min_speech_ms, vad.frame_ms).max(1);
@@ -142,13 +148,22 @@ fn env_or_arg(name: &str, var: &str) -> Option<String> { arg(name).or_else(|| en
 
 impl VadConfig {
     fn from_env_and_args() -> Result<Self> {
-        Ok(Self {
+        let config = Self {
             enabled: parse_bool(env_or_arg("--vad-enabled", "KWISPR_VAD_ENABLED").as_deref()).unwrap_or(false),
             threshold: env_or_arg("--vad-threshold", "KWISPR_VAD_THRESHOLD").unwrap_or_else(|| "0.01".into()).parse().context("parse VAD threshold")?,
             frame_ms: env_or_arg("--vad-frame-ms", "KWISPR_VAD_FRAME_MS").unwrap_or_else(|| "30".into()).parse().context("parse VAD frame ms")?,
             min_speech_ms: env_or_arg("--vad-min-speech-ms", "KWISPR_VAD_MIN_SPEECH_MS").unwrap_or_else(|| "150".into()).parse().context("parse VAD min speech ms")?,
             padding_ms: env_or_arg("--vad-padding-ms", "KWISPR_VAD_PADDING_MS").unwrap_or_else(|| "120".into()).parse().context("parse VAD padding ms")?,
-        })
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<()> {
+        if self.enabled && self.frame_ms == 0 { return Err(anyhow!("VAD frame ms must be greater than 0")); }
+        if self.enabled && !self.threshold.is_finite() { return Err(anyhow!("VAD threshold must be finite")); }
+        if self.enabled && self.threshold < 0.0 { return Err(anyhow!("VAD threshold must be non-negative")); }
+        Ok(())
     }
 }
 
@@ -160,6 +175,7 @@ fn parse_bool(value: Option<&str>) -> Option<bool> {
     }
 }
 
+#[derive(Debug)]
 struct ApiError(StatusCode, String);
 impl ApiError { fn bad_request(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::BAD_REQUEST, e.into().to_string()) } fn not_found(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::NOT_FOUND, e.into().to_string()) } fn runtime(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::UNPROCESSABLE_ENTITY, e.into().to_string()) } fn internal(e: impl Into<anyhow::Error>) -> Self { Self(StatusCode::INTERNAL_SERVER_ERROR, e.into().to_string()) } }
 impl IntoResponse for ApiError { fn into_response(self) -> Response { (self.0, Json(ErrorBody { error: self.1 })).into_response() } }
@@ -201,5 +217,51 @@ mod tests {
         let out = preprocess_audio(audio, &VadConfig { enabled: false, ..test_vad() }).unwrap();
         assert_eq!(out.decision, VadDecision::Disabled);
         assert_eq!(out.samples.len(), 1600);
+    }
+
+    #[test]
+    fn vad_rejects_zero_frame_ms_in_preprocess() {
+        let audio = DecodedAudio { samples: vec![0.0; 1600], sample_rate: 16_000 };
+        let err = preprocess_audio(audio, &VadConfig { frame_ms: 0, ..test_vad() }).unwrap_err();
+        assert!(err.to_string().contains("VAD frame ms must be greater than 0"));
+    }
+
+    #[test]
+    fn vad_rejects_invalid_threshold() {
+        let err = VadConfig { threshold: f32::NAN, ..test_vad() }.validate().unwrap_err();
+        assert!(err.to_string().contains("VAD threshold must be finite"));
+    }
+
+    #[test]
+    fn unknown_model_is_rejected_before_silent_vad_skip() {
+        let catalog = Catalog { models: vec![ModelInfo {
+            id: "known-model".into(),
+            name: "Known Model".into(),
+            engine_type: "whisper".into(),
+            artifact: Artifact { filename: "known.bin".into(), is_directory: false },
+            supports_language_selection: false,
+        }] };
+        let err = resolve_model(&catalog, "missing-model").unwrap_err();
+        assert_eq!(err.0, StatusCode::NOT_FOUND);
+        assert!(err.1.contains("unknown model: missing-model"));
+
+        let silent = preprocess_audio(DecodedAudio { samples: vec![0.0; 1600], sample_rate: 16_000 }, &test_vad()).unwrap();
+        assert_eq!(silent.decision, VadDecision::NoSpeech);
+    }
+
+    #[test]
+    fn silent_audio_with_valid_model_skips_before_model_load() {
+        let catalog = Catalog { models: vec![ModelInfo {
+            id: "known-model".into(),
+            name: "Known Model".into(),
+            engine_type: "whisper".into(),
+            artifact: Artifact { filename: "known.bin".into(), is_directory: false },
+            supports_language_selection: false,
+        }] };
+        let info = resolve_model(&catalog, "known-model").unwrap();
+        assert_eq!(info.id, "known-model");
+
+        let silent = preprocess_audio(DecodedAudio { samples: vec![0.0; 1600], sample_rate: 16_000 }, &test_vad()).unwrap();
+        assert_eq!(silent.decision, VadDecision::NoSpeech);
     }
 }
