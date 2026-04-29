@@ -97,6 +97,24 @@ Clear HTTP errors are returned as `{"error":"..."}`:
 
 Loaded engines are cached by model id for the life of the process, so repeated requests to the same model do not reload the model.
 
+## Optional VAD preprocessing
+
+The Rust runtime has an optional lightweight VAD-style preprocessing hook before local inference. It is disabled by default so existing local and cloud/OpenRouter/OpenAI behavior stays unchanged. Enable it only for the local runtime:
+
+```bash
+KWISPR_VAD_ENABLED=1 \
+KWISPR_VAD_THRESHOLD=0.01 \
+KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
+  ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
+  --catalog ../models/local-stt-catalog.json
+```
+
+Equivalent CLI flags are available: `--vad-enabled true`, `--vad-threshold`, `--vad-frame-ms`, `--vad-min-speech-ms`, and `--vad-padding-ms`. `/health` reports the active VAD config.
+
+Current behavior is a safe energy/RMS gate rather than full Silero ONNX VAD: audio is split into frames, frames above `KWISPR_VAD_THRESHOLD` are treated as voiced, leading/trailing silence is trimmed with padding, and clips with less than `KWISPR_VAD_MIN_SPEECH_MS` of voiced frames return an empty transcript without loading/running a model. This handles synthetic silence and short noise safely, reduces junk audio sent to STT, and helps avoid hallucinated transcripts from no-voice clips.
+
+Why VAD matters: it trims leading/trailing silence, detects voice vs. non-voice audio, feeds less junk into STT, lowers latency for padded recordings, and reduces hallucinations on silence/noise. The config is intentionally compatible with a future Handy/Silero-style VAD provider, but Silero ONNX model integration is not implemented yet; follow-up: https://github.com/blockedby/kwispr/issues/8.
+
 ## Model recommendations
 
 | Dictation need | Recommended model | Model id | Notes |
@@ -151,4 +169,4 @@ Handy already demonstrates a working local STT architecture with downloadable mo
 4. optional VAD preprocessing
 5. future catalog expansion, such as Moonshine-class English low-latency models when suitable artifacts are selected
 
-VAD is planned because it can trim silence, detect voice/non-voice audio, avoid feeding junk into STT, and reduce hallucinated transcripts.
+VAD now has an optional local-runtime preprocessing hook. The first implementation is a conservative energy/RMS gate; full Silero ONNX integration remains tracked in https://github.com/blockedby/kwispr/issues/8.
