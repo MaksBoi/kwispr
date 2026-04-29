@@ -66,13 +66,21 @@ Build and run when Rust/Cargo and native transcribe-rs dependencies are availabl
 
 ```bash
 cd rust-local-stt
+# Native build dependencies include Rust/Cargo, CMake, Clang, libvulkan headers, and glslc.
 cargo build --release
 KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
   ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
   --catalog ../models/local-stt-catalog.json
 ```
 
-Validation caveat: this branch wires the real `transcribe-rs` runtime scaffold and catalog integration, but end-to-end validation with the real GigaAM and Parakeet model artifacts is still pending. Track that follow-up in [issue #5](https://github.com/blockedby/kwispr/issues/5); until it is closed, treat those engines as integrated but not yet production-validated.
+Whisper builds with `whisper-vulkan` enabled. On a working Vulkan host, a successful GPU-backed Whisper load logs:
+
+```text
+ggml_vulkan: 0 = NVIDIA GeForce RTX 3080 Ti
+whisper_backend_init_gpu: using Vulkan0 backend
+```
+
+Validation status: GigaAM v3 and Whisper Large v3 Turbo have been validated with real local artifacts. Whisper Turbo was validated on an NVIDIA RTX 3080 Ti through Vulkan. Parakeet V3 still needs real-artifact validation; track that follow-up in [issue #5](https://github.com/blockedby/kwispr/issues/5).
 
 The endpoint is OpenAI-compatible:
 
@@ -137,7 +145,7 @@ No cloud key is required for local mode. Keep `KWISPR_API_KEY=` empty when `KWIS
 | `model ... is not installed` | The catalog artifact has not been downloaded or `KWISPR_MODEL_DIR` points elsewhere | Run `./kwispr-models.py download <model-id>` and verify the same model dir is used by the runtime. |
 | `unsupported engine_type` / model load failure | Native transcribe-rs dependency or engine support is unavailable for that model on this machine | Rebuild `rust-local-stt`, try another catalog model, or fall back to cloud mode. |
 | Unsupported or incorrect language | Selected model does not support that language, or does not honor `language` selection | Use GigaAM for Russian; use Parakeet/Whisper Turbo for mixed ru/en; leave language empty for autodetect where supported. |
-| Need GPU/CPU fallback control | The current runtime does not expose a GPU/CPU switch | Use the default native path for now; if unavailable, use a cloud backend until runtime selection is added. |
+| Whisper is slow or logs `no GPU found` | The runtime did not get a usable Vulkan device | Build with the default `whisper-vulkan` feature, verify host `vulkaninfo` sees the GPU, and restart the local runtime. If Vulkan is unavailable, use GigaAM for Russian or a cloud backend. |
 
 ## Initial catalog slice
 

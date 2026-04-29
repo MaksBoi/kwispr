@@ -169,15 +169,26 @@ For quick wiring tests, the legacy Python stub exposes `GET /health` and `POST /
 ./kwispr-local-stt-server.py --host 127.0.0.1 --port 9000
 ```
 
-For real local inference, build and run the Rust runtime after downloading a catalog model:
+For real local inference, build and run the Rust runtime after downloading a catalog model. Whisper is built with the Vulkan backend enabled, so a host with working Vulkan drivers can use GPU acceleration:
 
 ```bash
 ./kwispr-models.py download gigaam-v3-e2e-ctc
+# Optional multilingual fallback:
+./kwispr-models.py download whisper-large-v3-turbo
+
 cd rust-local-stt
+# Native build dependencies include Rust/Cargo, CMake, Clang, libvulkan headers, and glslc.
 cargo build --release
 KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
   ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
   --catalog ../models/local-stt-catalog.json
+```
+
+A successful Vulkan Whisper run logs lines like:
+
+```text
+ggml_vulkan: 0 = NVIDIA GeForce RTX 3080 Ti
+whisper_backend_init_gpu: using Vulkan0 backend
 ```
 
 Then configure `.env` without changing `kwispr.sh`:
@@ -253,7 +264,7 @@ Plus a minimum 1 second of audio before the API call (below that — immediate "
 | `unknown model` / `model ... is not installed` | `.env` model id is not in the catalog or artifact has not been downloaded | Run `./kwispr-models.py list`, then `./kwispr-models.py download <model-id>` and verify `KWISPR_MODEL_DIR` |
 | `unsupported engine_type` or runtime load failure | The runtime was built without a usable local engine/dependency for that catalog entry | Try another catalog model, rebuild `rust-local-stt`, or use cloud mode until the local runtime dependency is available on your system |
 | Wrong language or unsupported language in local mode | Selected model does not support that language or ignores `KWISPR_LANGUAGE` | Use GigaAM for Russian, Parakeet/Whisper for mixed ru/en, or leave `KWISPR_LANGUAGE=` empty for autodetect where supported |
-| CPU/GPU fallback is unavailable | Current local runtime does not expose a GPU/CPU selection switch | Use the default CPU/native backend path, or fall back to OpenAI/OpenRouter cloud mode if local native runtime is unavailable |
+| Whisper is slow / logs `no GPU found` | The Rust runtime is running without a usable Vulkan device | Build with the default `whisper-vulkan` feature, make sure `vulkaninfo` sees your GPU on the host, then restart the local runtime. If Vulkan is unavailable, use GigaAM for Russian or cloud mode. |
 | "API 401" | Wrong API key | Verify on platform.openai.com; local mode should not send a cloud key |
 | "API 429" | Rate limit / billing | Top up OpenAI balance |
 | Empty clipboard after ✅ | Wayland clipboard glitch | `systemctl --user restart xdg-desktop-portal` |
