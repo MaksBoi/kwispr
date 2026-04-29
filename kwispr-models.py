@@ -131,7 +131,10 @@ def safe_extract_tar_gz(archive: Path, dest: Path) -> None:
 
 
 def download_url(url: str, dest: Path) -> None:
-    with urllib.request.urlopen(url) as response, dest.open("wb") as out:
+    # Some model CDNs reject Python's default urllib User-Agent with 403.
+    # Use a normal downloader UA while keeping the helper dependency-free.
+    request = urllib.request.Request(url, headers={"User-Agent": "kwispr-models/1.0"})
+    with urllib.request.urlopen(request) as response, dest.open("wb") as out:
         shutil.copyfileobj(response, out)
 
 
