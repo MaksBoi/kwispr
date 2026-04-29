@@ -168,6 +168,16 @@ KWISPR_MODEL=large-v3-turbo
 KWISPR_API_KEY=
 ```
 
+### Local STT model catalog
+
+Kwispr includes a metadata-only catalog for future local/offline STT support:
+
+```text
+models/local-stt-catalog.json
+```
+
+The initial catalog slice tracks Handy-compatible model artifacts for GigaAM v3, Parakeet V3, and Whisper Large v3 Turbo. Kwispr does not download or run these models yet; see [`docs/local-stt.md`](docs/local-stt.md) for the local backend roadmap.
+
 ## Archive and rotation
 
 All recordings + transcripts are kept in `~/.cache/kwispr/`. Files older than 30 days are deleted automatically on each run (only `*.wav` and `*.txt`, service files are not touched).

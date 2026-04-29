@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "description": "Catalog of Handy-compatible local STT models for future Kwispr local backends. This file is metadata only; Kwispr does not download or run these models yet.",
+  "source": {
+    "project": "Handy",
+    "repository": "https://github.com/cjpais/Handy",
+    "notes": "Model metadata follows the fields Handy exposes in its local model manager: id, engine type, artifact URL, SHA256, size, language support, and archive layout."
+  },
+  "models": [
+    {
+      "id": "gigaam-v3-e2e-ctc",
+      "name": "GigaAM v3",
+      "description": "Russian speech recognition. Fast and accurate.",
+      "engine_type": "gigaam",
+      "artifact": {
+        "filename": "giga-am-v3-int8",
+        "url": "https://blob.handy.computer/giga-am-v3-int8.tar.gz",
+        "sha256": "d872462268430db140b69b72e0fc4b787b194c1dbe51b58de39444d55b6da45b",
+        "size_mb": 151,
+        "archive_format": "tar.gz",
+        "is_directory": true
+      },
+      "languages": ["ru"],
+      "supports_language_selection": false,
+      "supports_translation": false,
+      "recommended_for": ["russian", "low-latency-local-dictation"]
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "name": "Parakeet V3",
+      "description": "Fast and accurate multilingual model. Supports 25 European languages.",
+      "engine_type": "parakeet",
+      "artifact": {
+        "filename": "parakeet-tdt-0.6b-v3-int8",
+        "url": "https://blob.handy.computer/parakeet-v3-int8.tar.gz",
+        "sha256": "43d37191602727524a7d8c6da0eef11c4ba24320f5b4730f1a2497befc2efa77",
+        "size_mb": 456,
+        "archive_format": "tar.gz",
+        "is_directory": true
+      },
+      "languages": [
+        "bg",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "en",
+        "et",
+        "fi",
+        "fr",
+        "de",
+        "el",
+        "hu",
+        "it",
+        "lv",
+        "lt",
+        "mt",
+        "pl",
+        "pt",
+        "ro",
+        "sk",
+        "sl",
+        "es",
+        "sv",
+        "ru",
+        "uk"
+      ],
+      "supports_language_selection": false,
+      "supports_translation": false,
+      "recommended_for": ["mixed-russian-english", "multilingual-local-dictation"]
+    },
+    {
+      "id": "whisper-large-v3-turbo",
+      "name": "Whisper Large v3 Turbo",
+      "description": "General-purpose Whisper fallback with broad language support.",
+      "engine_type": "whisper",
+      "artifact": {
+        "filename": "ggml-large-v3-turbo.bin",
+        "url": "https://blob.handy.computer/ggml-large-v3-turbo.bin",
+        "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+        "size_mb": 1549,
+        "archive_format": null,
+        "is_directory": false
+      },
+      "languages": ["multilingual"],
+      "supports_language_selection": true,
+      "supports_translation": false,
+      "recommended_for": ["general-purpose", "fallback"]
+    }
+  ]
+}
