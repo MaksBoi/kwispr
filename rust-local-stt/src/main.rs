@@ -99,7 +99,7 @@ fn transcribe_blocking(model_dir: &Path, info: &ModelInfo, audio: Vec<f32>, lang
 }
 
 fn load_engine(model_dir: &Path, info: &ModelInfo) -> Result<LoadedEngine> {
-    let path = if info.artifact.is_directory { model_dir.join(&info.id) } else { model_dir.join(&info.artifact.filename) };
+    let path = model_path(model_dir, info);
     if !path.exists() { return Err(anyhow!("model '{}' ({}) is not installed at {}", info.id, info.name, path.display())); }
     match info.engine_type.as_str() {
         "gigaam" => Ok(LoadedEngine::GigaAM(GigaAMModel::load(&path, &Quantization::Int8)?)),
@@ -107,6 +107,15 @@ fn load_engine(model_dir: &Path, info: &ModelInfo) -> Result<LoadedEngine> {
         "whisper" => Ok(LoadedEngine::Whisper(WhisperEngine::load(&path)?)),
         other => Err(anyhow!("unsupported engine_type '{other}' for model {}", info.id)),
     }
+}
+
+fn model_path(model_dir: &Path, info: &ModelInfo) -> PathBuf {
+    if !info.artifact.is_directory {
+        return model_dir.join(&info.artifact.filename);
+    }
+    let base = model_dir.join(&info.id);
+    let nested = base.join(&info.artifact.filename);
+    if nested.is_dir() { nested } else { base }
 }
 
 fn decode_wav(bytes: &[u8]) -> Result<DecodedAudio> {
@@ -197,6 +206,22 @@ mod tests {
     use super::*;
 
     fn test_vad() -> VadConfig { VadConfig { enabled: true, threshold: 0.01, frame_ms: 10, min_speech_ms: 30, padding_ms: 10 } }
+
+    #[test]
+    fn directory_model_path_uses_nested_artifact_directory_when_present() {
+        let tmp = std::env::temp_dir().join(format!("kwispr-model-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("model-id/model-artifact-dir")).unwrap();
+        let info = ModelInfo {
+            id: "model-id".into(),
+            name: "Model".into(),
+            engine_type: "parakeet".into(),
+            artifact: Artifact { filename: "model-artifact-dir".into(), is_directory: true },
+            supports_language_selection: false,
+        };
+        assert_eq!(model_path(&tmp, &info), tmp.join("model-id/model-artifact-dir"));
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
 
     #[test]
     fn vad_skips_silence() {
