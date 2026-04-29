@@ -159,24 +159,58 @@ KWISPR_PULSE_SOURCE=default
 KWISPR_TRANSCRIPTION_PROMPT='Transcribe this audio exactly as spoken. The speech may be Russian, English, or mixed. Do not translate. Return only the transcript.'
 ```
 
-**Local OpenAI-compatible Whisper server:**
+**Local/offline STT (no cloud key):**
+
+Kwispr can use a local OpenAI-compatible STT endpoint. In local mode, no OpenAI or OpenRouter key is required: leave `KWISPR_API_KEY` empty and point `KWISPR_API_URL` at the local server.
+
+For quick wiring tests, the legacy Python stub exposes `GET /health` and `POST /v1/audio/transcriptions` and returns `{"text":"[stub transcript]"}`; it does not perform real inference:
+
+```bash
+./kwispr-local-stt-server.py --host 127.0.0.1 --port 9000
+```
+
+For real local inference, build and run the Rust runtime after downloading a catalog model:
+
+```bash
+./kwispr-models.py download gigaam-v3-e2e-ctc
+cd rust-local-stt
+cargo build --release
+KWISPR_MODEL_DIR=~/.local/share/kwispr/models \
+  ./target/release/kwispr-local-stt --host 127.0.0.1 --port 9000 \
+  --catalog ../models/local-stt-catalog.json
+```
+
+Then configure `.env` without changing `kwispr.sh`:
 
 ```bash
 KWISPR_BACKEND=openai-transcriptions
 KWISPR_API_URL=http://127.0.0.1:9000/v1/audio/transcriptions
-KWISPR_MODEL=large-v3-turbo
+KWISPR_MODEL=gigaam-v3-e2e-ctc
 KWISPR_API_KEY=
+KWISPR_LANGUAGE=ru
 ```
 
 ### Local STT model catalog
 
-Kwispr includes a metadata-only catalog for future local/offline STT support:
+Kwispr includes a local/offline STT model catalog and a small downloader helper:
 
-```text
-models/local-stt-catalog.json
+```bash
+./kwispr-models.py list
+./kwispr-models.py download gigaam-v3-e2e-ctc
+./kwispr-models.py verify gigaam-v3-e2e-ctc
 ```
 
-The initial catalog slice tracks Handy-compatible model artifacts for GigaAM v3, Parakeet V3, and Whisper Large v3 Turbo. Kwispr does not download or run these models yet; see [`docs/local-stt.md`](docs/local-stt.md) for the local backend roadmap.
+Models install under `~/.local/share/kwispr/models` by default. Set `KWISPR_MODEL_DIR=/path/to/models` or pass `--model-dir /path/to/models` to use another location. Downloads are SHA256-verified before install; repeated runs skip models that are already valid.
+
+The initial catalog tracks Handy-compatible model artifacts for GigaAM v3, Parakeet V3, and Whisper Large v3 Turbo; the Rust runtime loads these models when its native dependencies are available. See [`docs/local-stt.md`](docs/local-stt.md) for local runtime details and limitations.
+
+Recommended starting points:
+
+| Dictation need | Recommended model | `.env` model id | Notes |
+|---|---|---|---|
+| Russian | GigaAM v3 | `gigaam-v3-e2e-ctc` | Smallest catalog model and the best default for Russian-only dictation. |
+| Mixed Russian/English | Parakeet V3 or Whisper Large v3 Turbo | `parakeet-tdt-0.6b-v3` or `whisper-large-v3-turbo` | Parakeet is faster/lighter; Whisper Turbo is the broader multilingual fallback. |
+| English low latency | Parakeet now; Moonshine-class models later | `parakeet-tdt-0.6b-v3` | The current catalog does not include Moonshine. Treat Moonshine-class English options as future catalog candidates. |
 
 ## Archive and rotation
 
@@ -210,11 +244,17 @@ Plus a minimum 1 second of audio before the API call (below that — immediate "
 | Symptom | Cause | Fix |
 |---|---|---|
 | "No .env" | Config not created | `cp .env.example .env; chmod 600 .env` |
-| "KWISPR_API_KEY/OPENAI_API_KEY not set" | Placeholder instead of a key | Put a real `sk-...` or `sk-or-...` into `.env`, or use a local backend URL |
+| "KWISPR_API_KEY/OPENAI_API_KEY not set" | Placeholder instead of a key for cloud mode | Put a real `sk-...` or `sk-or-...` into `.env`; for local mode, set `KWISPR_API_URL=http://127.0.0.1:9000/v1/audio/transcriptions` and leave `KWISPR_API_KEY=` empty |
 | "Too short" on normal speech | pulse hadn't opened yet (0.05s sleep too short) | Increase the `sleep` in `start_recording` |
 | Records but doesn't paste | ydotoold not running or `/dev/uinput` not accessible | `systemctl status ydotoold` + `ls -la /dev/uinput` (should be `crw-rw---- root input`) |
 | Pasted into wrong window | Focus was elsewhere when you pressed the hotkey | Place cursor in the target **before** pressing the hotkey to stop |
-| "API 401" | Wrong API key | Verify on platform.openai.com |
+| Local mode returns `[stub transcript]` | The Python stub server is running | Use the Rust runtime for real local inference; the stub is only for wiring tests |
+| `curl: (7) Failed to connect` or local API error | Local STT server is not running or wrong port | Start `kwispr-local-stt-server.py` or `rust-local-stt/target/release/kwispr-local-stt`, then check `curl http://127.0.0.1:9000/health` |
+| `unknown model` / `model ... is not installed` | `.env` model id is not in the catalog or artifact has not been downloaded | Run `./kwispr-models.py list`, then `./kwispr-models.py download <model-id>` and verify `KWISPR_MODEL_DIR` |
+| `unsupported engine_type` or runtime load failure | The runtime was built without a usable local engine/dependency for that catalog entry | Try another catalog model, rebuild `rust-local-stt`, or use cloud mode until the local runtime dependency is available on your system |
+| Wrong language or unsupported language in local mode | Selected model does not support that language or ignores `KWISPR_LANGUAGE` | Use GigaAM for Russian, Parakeet/Whisper for mixed ru/en, or leave `KWISPR_LANGUAGE=` empty for autodetect where supported |
+| CPU/GPU fallback is unavailable | Current local runtime does not expose a GPU/CPU selection switch | Use the default CPU/native backend path, or fall back to OpenAI/OpenRouter cloud mode if local native runtime is unavailable |
+| "API 401" | Wrong API key | Verify on platform.openai.com; local mode should not send a cloud key |
 | "API 429" | Rate limit / billing | Top up OpenAI balance |
 | Empty clipboard after ✅ | Wayland clipboard glitch | `systemctl --user restart xdg-desktop-portal` |
 | No notifications | `libnotify-bin` missing | `sudo apt install libnotify-bin` |
