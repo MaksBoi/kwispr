@@ -2,3 +2,4 @@
 .env.*
 !.env.example
 rust-local-stt/target/
+.pi/

@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Context, Result};
-use axum::{extract::{multipart::MultipartRejection, Multipart, State}, http::StatusCode, response::{IntoResponse, Response}, routing::{get, post}, Json, Router};
+use axum::{extract::{multipart::MultipartRejection, DefaultBodyLimit, Multipart, State}, http::StatusCode, response::{IntoResponse, Response}, routing::{get, post}, Json, Router};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env, io::Cursor, net::SocketAddr, path::{Path, PathBuf}, sync::Mutex};
 use transcribe_rs::{onnx::{gigaam::GigaAMModel, parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity}, Quantization}, vad::{SileroVad, SmoothedVad, Vad}, whisper_cpp::{WhisperEngine, WhisperInferenceParams}, SpeechModel, TranscribeOptions};
 
 static ENGINE_CACHE: Lazy<Mutex<HashMap<String, LoadedEngine>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+const MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)] struct AppState { catalog: Catalog, model_dir: PathBuf, vad: VadConfig }
 #[derive(Clone, Deserialize)] struct Catalog { models: Vec<ModelInfo> }
@@ -53,7 +54,9 @@ async fn main() -> Result<()> {
     let catalog: Catalog = serde_json::from_slice(&std::fs::read(&catalog_path).with_context(|| format!("read catalog {}", catalog_path.display()))?)?;
     let app_state = AppState { catalog, model_dir, vad: vad.clone() };
     let app = Router::new().route("/health", get(health))
-        .route("/v1/audio/transcriptions", post(transcribe)).with_state(app_state);
+        .route("/v1/audio/transcriptions", post(transcribe))
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
+        .with_state(app_state);
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     println!("kwispr local STT runtime listening on http://{addr} (vad_enabled={})", vad.enabled);
     let listener = tokio::net::TcpListener::bind(addr).await?;

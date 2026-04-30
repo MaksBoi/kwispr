@@ -1,0 +1,18 @@
+FROM docker.io/library/archlinux:latest
+
+RUN pacman -Syu --noconfirm --needed \
+    base-devel \
+    rust \
+    cmake \
+    clang \
+    git \
+    pkgconf \
+    vulkan-headers \
+    vulkan-icd-loader \
+    shaderc \
+    ccache \
+  && pacman -Scc --noconfirm
+
+WORKDIR /work/rust-local-stt
+ENV CARGO_TARGET_DIR=/work/rust-local-stt/target
+CMD ["cargo", "build", "--release"]

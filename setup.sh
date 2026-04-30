@@ -7,22 +7,38 @@ YDOTOOL_VERSION="v1.0.4"
 YDOTOOL_ARCH="ubuntu-latest"
 
 echo "==> Checking PipeWire/PulseAudio compatibility..."
-if ! pactl info 2>/dev/null | grep -q "PipeWire"; then
-  echo "WARN: PipeWire not detected. Expected on Ubuntu 25.10 — install pipewire-pulse manually."
+if command -v pactl >/dev/null 2>&1 && ! pactl info 2>/dev/null | grep -q "PipeWire"; then
+  echo "WARN: PipeWire not detected. Install/start pipewire-pulse if recording fails."
 fi
 
-echo "==> Installing APT packages..."
-sudo apt install -y ffmpeg curl jq wl-clipboard libnotify-bin
+install_runtime_packages() {
+  if command -v pacman >/dev/null 2>&1; then
+    echo "==> Installing pacman packages..."
+    sudo pacman -S --needed ffmpeg curl jq wl-clipboard libnotify pipewire-pulse ydotool
+  elif command -v apt >/dev/null 2>&1; then
+    echo "==> Installing APT packages..."
+    sudo apt install -y ffmpeg curl jq wl-clipboard libnotify-bin
+  else
+    echo "WARN: No supported package manager found. Install ffmpeg curl jq wl-clipboard libnotify and optionally ydotool manually."
+  fi
+}
+
+install_runtime_packages
 
 # -----------------------------------------------------------------------------
 # Optional: ydotool for auto-paste (Ctrl+V simulation on Wayland)
 # -----------------------------------------------------------------------------
 
 install_ydotool() {
+  if command -v ydotool >/dev/null 2>&1 && command -v ydotoold >/dev/null 2>&1; then
+    echo "==> ydotool already installed: $(command -v ydotool)"
+    return 0
+  fi
+
   local target_dir="$HOME/.local/bin"
   mkdir -p "$target_dir"
 
-  echo "==> Downloading ydotool ${YDOTOOL_VERSION}..."
+  echo "==> Downloading ydotool ${YDOTOOL_VERSION} fallback binaries..."
   curl -sSL -o "$target_dir/ydotool" \
     "https://github.com/ReimuNotMoe/ydotool/releases/download/${YDOTOOL_VERSION}/ydotool-release-${YDOTOOL_ARCH}"
   curl -sSL -o "$target_dir/ydotoold" \
@@ -50,6 +66,8 @@ EOF
 
 install_ydotoold_service() {
   echo "==> Installing ydotoold systemd service..."
+  local ydotoold_bin
+  ydotoold_bin="$(command -v ydotoold || echo "$HOME/.local/bin/ydotoold")"
   sudo tee /etc/systemd/system/ydotoold.service > /dev/null <<EOF
 [Unit]
 Description=ydotool Daemon (keyboard automation via /dev/uinput)
@@ -60,7 +78,7 @@ After=multi-user.target
 Type=simple
 User=$USER
 Group=$USER
-ExecStart=$HOME/.local/bin/ydotoold --socket-path=/run/user/$(id -u)/.ydotool_socket --socket-perm=0600
+ExecStart=$ydotoold_bin --socket-path=/run/user/$(id -u)/.ydotool_socket --socket-perm=0600
 Restart=on-failure
 RestartSec=2
 
@@ -132,7 +150,7 @@ if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
   echo "NEXT STEPS:"
   echo "  1. cp $SCRIPT_DIR/.env.example $SCRIPT_DIR/.env"
   echo "  2. chmod 600 $SCRIPT_DIR/.env"
-  echo "  3. Edit $SCRIPT_DIR/.env and put your OpenAI API key"
+  echo "  3. Edit $SCRIPT_DIR/.env and choose cloud or local STT settings"
   echo "  4. Bind F5 to: $SCRIPT_DIR/kwispr.sh toggle"
   echo "     System Settings → Shortcuts → Custom Shortcuts → Add New → Command"
 else
