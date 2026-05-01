@@ -13,3 +13,10 @@
 - [x] Run `EnvFileTest` red.
 - [x] Implement parser/writer.
 - [x] Run `EnvFileTest` green.
+
+## Task 3 — Settings domain model and validation
+- [x] Add Task 3 checklist entry.
+- [x] Create settings model tests first.
+- [x] Run `SettingsModelTest` red.
+- [x] Implement model and validation.
+- [x] Run `SettingsModelTest` green.
