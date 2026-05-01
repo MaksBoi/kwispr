@@ -12,7 +12,7 @@ find_package(ECM 6.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Test Network)
-find_package(KF6 REQUIRED COMPONENTS CoreAddons)
+find_package(KF6 REQUIRED COMPONENTS CoreAddons StatusNotifierItem)
 
 add_library(kde_whisper_core STATIC
     src/AppMetadata.cpp
@@ -25,9 +25,11 @@ add_library(kde_whisper_core STATIC
     src/models/ModelCatalog.cpp
     src/models/ModelManager.cpp
     src/ui/SettingsDialog.cpp
+    src/ui/TrayApp.cpp
+    src/ui/TrayController.cpp
 )
 target_include_directories(kde_whisper_core PUBLIC src)
-target_link_libraries(kde_whisper_core PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)
+target_link_libraries(kde_whisper_core PUBLIC Qt6::Core Qt6::Network Qt6::Widgets KF6::StatusNotifierItem)
 
 add_executable(kde-whisper
     src/main.cpp
@@ -35,6 +37,11 @@ add_executable(kde-whisper
 target_link_libraries(kde-whisper PRIVATE kde_whisper_core Qt6::Widgets KF6::CoreAddons)
 
 if(BUILD_TESTING)
+    add_executable(TrayControllerTest tests/tray_controller_test.cpp)
+    target_link_libraries(TrayControllerTest PRIVATE kde_whisper_core Qt6::Test Qt6::Widgets)
+    add_test(NAME TrayControllerTest COMMAND TrayControllerTest)
+    set_tests_properties(TrayControllerTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(SettingsDialogTest tests/settings_dialog_test.cpp)
     target_link_libraries(SettingsDialogTest PRIVATE kde_whisper_core Qt6::Test Qt6::Widgets)
     add_test(NAME SettingsDialogTest COMMAND SettingsDialogTest)
