@@ -29,3 +29,11 @@
 - [x] Run contract tests red because helpers/fakes are missing.
 - [x] Implement test harness/fakes only.
 - [x] Run contract tests green without changing `kwispr.sh`.
+
+## Task 5 — Process runner for existing toggle/retry and local Rust STT server
+
+- [x] Add Task 5 checklist entry.
+- [x] Create runner tests first.
+- [x] Run `ProcessRunnerTest` red.
+- [x] Implement runner.
+- [x] Run `ProcessRunnerTest` green.

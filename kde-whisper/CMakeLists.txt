@@ -18,6 +18,9 @@ add_library(kde_whisper_core STATIC
     src/AppMetadata.cpp
     src/config/EnvFile.cpp
     src/config/KwisprSettings.cpp
+    src/runtime/KwisprController.cpp
+    src/runtime/LocalSttProcess.cpp
+    src/runtime/ProcessRunner.cpp
 )
 target_include_directories(kde_whisper_core PUBLIC src)
 target_link_libraries(kde_whisper_core PUBLIC Qt6::Core)
@@ -28,6 +31,10 @@ add_executable(kde-whisper
 target_link_libraries(kde-whisper PRIVATE kde_whisper_core Qt6::Widgets KF6::CoreAddons)
 
 if(BUILD_TESTING)
+    add_executable(ProcessRunnerTest tests/process_runner_test.cpp)
+    target_link_libraries(ProcessRunnerTest PRIVATE kde_whisper_core Qt6::Test)
+    add_test(NAME ProcessRunnerTest COMMAND ProcessRunnerTest)
+
     add_executable(SettingsModelTest tests/settings_model_test.cpp)
     target_link_libraries(SettingsModelTest PRIVATE kde_whisper_core Qt6::Test)
     add_test(NAME SettingsModelTest COMMAND SettingsModelTest)
