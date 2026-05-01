@@ -6,3 +6,6 @@ rust-local-stt/target/
 
 # KDE Whisper build artifacts
 kde-whisper/build/
+
+__pycache__/
+*.py[cod]
