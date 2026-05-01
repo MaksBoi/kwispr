@@ -3,3 +3,6 @@
 !.env.example
 rust-local-stt/target/
 .pi/
+
+# KDE Whisper build artifacts
+kde-whisper/build/
