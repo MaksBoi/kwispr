@@ -51,3 +51,10 @@
 - [x] Run `LocalSttClientTest` red.
 - [x] Implement health client.
 - [x] Run `LocalSttClientTest` green.
+
+## Task 8 — Settings dialog UI
+- [x] Add Task 8 checklist entry.
+- [x] Create Qt widget tests first.
+- [x] Run `SettingsDialogTest` red.
+- [x] Implement dialog.
+- [x] Run `SettingsDialogTest` green.

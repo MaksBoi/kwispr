@@ -24,9 +24,10 @@ add_library(kde_whisper_core STATIC
     src/runtime/ProcessRunner.cpp
     src/models/ModelCatalog.cpp
     src/models/ModelManager.cpp
+    src/ui/SettingsDialog.cpp
 )
 target_include_directories(kde_whisper_core PUBLIC src)
-target_link_libraries(kde_whisper_core PUBLIC Qt6::Core Qt6::Network)
+target_link_libraries(kde_whisper_core PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)
 
 add_executable(kde-whisper
     src/main.cpp
@@ -34,6 +35,11 @@ add_executable(kde-whisper
 target_link_libraries(kde-whisper PRIVATE kde_whisper_core Qt6::Widgets KF6::CoreAddons)
 
 if(BUILD_TESTING)
+    add_executable(SettingsDialogTest tests/settings_dialog_test.cpp)
+    target_link_libraries(SettingsDialogTest PRIVATE kde_whisper_core Qt6::Test Qt6::Widgets)
+    add_test(NAME SettingsDialogTest COMMAND SettingsDialogTest)
+    set_tests_properties(SettingsDialogTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(LocalSttClientTest tests/local_stt_client_test.cpp)
     target_link_libraries(LocalSttClientTest PRIVATE kde_whisper_core Qt6::Test Qt6::Network)
     add_test(NAME LocalSttClientTest COMMAND LocalSttClientTest)
