@@ -37,3 +37,10 @@
 - [x] Run `ProcessRunnerTest` red.
 - [x] Implement runner.
 - [x] Run `ProcessRunnerTest` green.
+
+## Task 6 — Model catalog and installer bridge
+- [x] Add Task 6 checklist entry.
+- [x] Create model manager tests first.
+- [x] Run `ModelManagerTest` red.
+- [x] Implement model manager.
+- [x] Run `ModelManagerTest` green.
