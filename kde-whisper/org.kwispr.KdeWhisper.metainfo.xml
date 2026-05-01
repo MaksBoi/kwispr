@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.kwispr.KdeWhisper</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>KDE Whisper</name>
+  <summary>Tray and settings utility for Kwispr voice dictation</summary>
+  <description>
+    <p>KDE Whisper provides an optional KDE tray and settings interface for Kwispr voice dictation while preserving the existing command-line workflow.</p>
+  </description>
+  <launchable type="desktop-id">org.kwispr.KdeWhisper.desktop</launchable>
+  <provides>
+    <binary>kde-whisper</binary>
+  </provides>
+</component>

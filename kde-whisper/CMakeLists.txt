@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 include(CTest)
+include(GNUInstallDirs)
 
 find_package(ECM 6.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
@@ -36,7 +37,18 @@ add_executable(kde-whisper
 )
 target_link_libraries(kde-whisper PRIVATE kde_whisper_core Qt6::Widgets KF6::CoreAddons)
 
+install(TARGETS kde-whisper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES org.kwispr.KdeWhisper.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES org.kwispr.KdeWhisper.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+install(FILES icons/org.kwispr.KdeWhisper.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+
 if(BUILD_TESTING)
+
+    add_test(NAME InstallMetadataTest
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -P ${CMAKE_SOURCE_DIR}/tests/install_metadata_test.cmake)
     add_executable(TrayControllerTest tests/tray_controller_test.cpp)
     target_link_libraries(TrayControllerTest PRIVATE kde_whisper_core Qt6::Test Qt6::Widgets)
     add_test(NAME TrayControllerTest COMMAND TrayControllerTest)
