@@ -44,3 +44,10 @@
 - [x] Run `ModelManagerTest` red.
 - [x] Implement model manager.
 - [x] Run `ModelManagerTest` green.
+
+## Task 7 — Local server health/status client
+- [x] Add Task 7 checklist entry.
+- [x] Create health client tests first.
+- [x] Run `LocalSttClientTest` red.
+- [x] Implement health client.
+- [x] Run `LocalSttClientTest` green.

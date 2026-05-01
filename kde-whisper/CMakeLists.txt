@@ -11,7 +11,7 @@ include(CTest)
 find_package(ECM 6.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Test Network)
 find_package(KF6 REQUIRED COMPONENTS CoreAddons)
 
 add_library(kde_whisper_core STATIC
@@ -19,13 +19,14 @@ add_library(kde_whisper_core STATIC
     src/config/EnvFile.cpp
     src/config/KwisprSettings.cpp
     src/runtime/KwisprController.cpp
+    src/runtime/LocalSttClient.cpp
     src/runtime/LocalSttProcess.cpp
     src/runtime/ProcessRunner.cpp
     src/models/ModelCatalog.cpp
     src/models/ModelManager.cpp
 )
 target_include_directories(kde_whisper_core PUBLIC src)
-target_link_libraries(kde_whisper_core PUBLIC Qt6::Core)
+target_link_libraries(kde_whisper_core PUBLIC Qt6::Core Qt6::Network)
 
 add_executable(kde-whisper
     src/main.cpp
@@ -33,6 +34,10 @@ add_executable(kde-whisper
 target_link_libraries(kde-whisper PRIVATE kde_whisper_core Qt6::Widgets KF6::CoreAddons)
 
 if(BUILD_TESTING)
+    add_executable(LocalSttClientTest tests/local_stt_client_test.cpp)
+    target_link_libraries(LocalSttClientTest PRIVATE kde_whisper_core Qt6::Test Qt6::Network)
+    add_test(NAME LocalSttClientTest COMMAND LocalSttClientTest)
+
     add_executable(ModelManagerTest tests/model_manager_test.cpp)
     target_link_libraries(ModelManagerTest PRIVATE kde_whisper_core Qt6::Test)
     add_test(NAME ModelManagerTest COMMAND ModelManagerTest)
