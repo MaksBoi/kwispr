@@ -58,3 +58,10 @@
 - [x] Run `SettingsDialogTest` red.
 - [x] Implement dialog.
 - [x] Run `SettingsDialogTest` green.
+
+## Task 9 — KF6 tray application and action controller
+- [x] Add Task 9 checklist entry.
+- [x] Create tray/controller tests first.
+- [x] Run `TrayControllerTest` red.
+- [x] Implement tray controller and KStatusNotifierItem wrapper.
+- [x] Run `TrayControllerTest` green.

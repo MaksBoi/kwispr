@@ -1,13 +1,15 @@
 #include "AppMetadata.h"
+#include "ui/TrayApp.h"
 
 #include <KAboutData>
 
 #include <QApplication>
-#include <QLabel>
+#include <QDir>
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    QApplication::setQuitOnLastWindowClosed(false);
 
     KAboutData aboutData(
         AppMetadata::appId(),
@@ -17,10 +19,9 @@ int main(int argc, char *argv[])
         KAboutLicense::GPL_V3);
     KAboutData::setApplicationData(aboutData);
 
-    QLabel placeholder(QStringLiteral("KDE Whisper settings shell"));
-    placeholder.setWindowTitle(AppMetadata::displayName());
-    placeholder.resize(360, 120);
-    placeholder.show();
+    const QString repoRoot = QDir::currentPath();
+    const QString cacheDir = QDir::homePath() + QStringLiteral("/.cache/kwispr");
+    TrayApp tray(repoRoot, cacheDir);
 
     return app.exec();
 }
