@@ -8,6 +8,7 @@ image=${KWISPR_KDE_DEV_IMAGE:-kwispr-kde-dev}
 podman build -t "$image" -f "$repo_root/kde-whisper/Containerfile" "$repo_root"
 
 podman run --rm \
+  -e QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}" \
   -v "$repo_root":/work:Z \
   -w /work \
   "$image" \
