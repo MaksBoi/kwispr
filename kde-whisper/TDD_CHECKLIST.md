@@ -65,3 +65,10 @@
 - [x] Run `TrayControllerTest` red.
 - [x] Implement tray controller and KStatusNotifierItem wrapper.
 - [x] Run `TrayControllerTest` green.
+
+## Task 10 — Install targets, desktop metadata, and optional setup docs
+- [x] Add Task 10 checklist entry.
+- [x] Create install/desktop tests first.
+- [x] Run install tests red.
+- [x] Implement install metadata.
+- [x] Run install tests green.

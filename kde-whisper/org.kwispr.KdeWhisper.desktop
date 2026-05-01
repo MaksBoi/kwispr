@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KDE Whisper
+GenericName=Dictation Tray and Settings Utility
+Comment=Tray and settings utility for Kwispr voice dictation
+Exec=kde-whisper
+Icon=org.kwispr.KdeWhisper
+Terminal=false
+Categories=Utility;AudioVideo;Audio;KDE;
+Keywords=whisper;dictation;speech;tray;settings;stt;
+StartupNotify=false
