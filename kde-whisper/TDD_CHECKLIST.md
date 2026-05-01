@@ -72,3 +72,10 @@
 - [x] Run install tests red.
 - [x] Implement install metadata.
 - [x] Run install tests green.
+
+## Task 11 — Documentation and full regression gate
+- [x] Add Task 11 checklist entry.
+- [x] Add docs checks first.
+- [x] Run docs/full gate red if docs or commands are missing.
+- [x] Update docs.
+- [x] Run full gate green.

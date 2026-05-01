@@ -293,6 +293,29 @@ and make sure you are running a freshly rebuilt `kwispr-local-stt` binary from t
 | Mic not recording | Check `pactl list sources short` and `KWISPR_PULSE_SOURCE`. |
 | Stale mic/ffmpeg after crash | `pkill -f 'ffmpeg.*pulse'` |
 
+## Optional KDE Whisper tray app
+
+This fork also contains an experimental optional KDE/Qt tray and settings app:
+
+```bash
+./kde-whisper/scripts/podman-test.sh
+./kde-whisper/build/kde-whisper
+```
+
+It does **not** replace the proven CLI path. Your KDE global shortcut can keep running:
+
+```bash
+/path/to/kwispr.sh toggle
+```
+
+The tray action delegates to the same `kwispr.sh toggle` command, and model downloads still use the existing helper:
+
+```bash
+./kwispr-models.py download whisper-large-v3-turbo
+```
+
+See [`docs/kde-whisper.md`](docs/kde-whisper.md) for build, test, install, and current limitation notes.
+
 ## Development notes
 
 - `kwispr.sh` is the user-facing toggle script.
@@ -300,6 +323,7 @@ and make sure you are running a freshly rebuilt `kwispr-local-stt` binary from t
 - `rust-local-stt/` contains the real local inference server.
 - `kwispr-local-stt-server.py` is only a legacy Python stub for API wiring tests.
 - More local STT details: [`docs/local-stt.md`](docs/local-stt.md).
+- Optional KDE tray/settings app details: [`docs/kde-whisper.md`](docs/kde-whisper.md).
 
 ## License
 

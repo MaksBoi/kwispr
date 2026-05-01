@@ -44,6 +44,11 @@ install(FILES icons/org.kwispr.KdeWhisper.svg DESTINATION ${CMAKE_INSTALL_DATADI
 
 if(BUILD_TESTING)
 
+    add_test(NAME DocsCheck
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -P ${CMAKE_SOURCE_DIR}/tests/docs_check.cmake)
+
     add_test(NAME InstallMetadataTest
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
