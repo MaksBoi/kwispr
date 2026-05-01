@@ -1,0 +1,19 @@
+FROM docker.io/library/archlinux:latest
+
+RUN pacman -Syu --noconfirm --needed \
+    base-devel \
+    cmake \
+    ninja \
+    extra-cmake-modules \
+    qt6-base \
+    qt6-tools \
+    kcoreaddons \
+    kconfig \
+    kconfigwidgets \
+    knotifications \
+    kstatusnotifieritem \
+    kwidgetsaddons \
+    ki18n \
+    desktop-file-utils \
+    git \
+  && pacman -Scc --noconfirm

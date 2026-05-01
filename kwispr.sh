@@ -66,6 +66,18 @@ play_cue() {
   disown
 }
 
+copy_text() {
+  if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  elif command -v qdbus6 >/dev/null 2>&1 && qdbus6 org.kde.klipper /klipper >/dev/null 2>&1; then
+    local text
+    text="$(cat)"
+    qdbus6 org.kde.klipper /klipper org.kde.klipper.klipper.setClipboardContents "$text" >/dev/null
+  else
+    return 1
+  fi
+}
+
 die() {
   notify "❌ kwispr error" "$1"
   echo "ERROR: $1" >&2
@@ -78,8 +90,25 @@ load_env() {
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
-  [[ -n "${OPENAI_API_KEY:-}" && "$OPENAI_API_KEY" != "sk-REPLACE_ME" ]] \
-    || die "OPENAI_API_KEY not set in $ENV_FILE"
+
+  : "${KWISPR_BACKEND:=openai-transcriptions}"
+  : "${KWISPR_API_URL:=https://api.openai.com/v1/audio/transcriptions}"
+  : "${KWISPR_MODEL:=whisper-1}"
+  : "${KWISPR_AUDIO_FORMAT:=wav}"
+  : "${KWISPR_PULSE_SOURCE:=default}"
+  : "${KWISPR_TRANSCRIPTION_PROMPT:=Transcribe this audio exactly as spoken. The speech may be Russian, English, or mixed. Do not translate. Return only the transcript.}"
+
+  # Backward compatibility: keep OPENAI_API_KEY working, but allow custom
+  # OpenAI-compatible backends (OpenRouter, LocalAI, local Whisper servers)
+  # to use KWISPR_API_KEY instead.
+  if [[ -z "${KWISPR_API_KEY:-}" && -n "${OPENAI_API_KEY:-}" ]]; then
+    KWISPR_API_KEY="$OPENAI_API_KEY"
+  fi
+
+  if [[ "$KWISPR_API_URL" == "https://api.openai.com/"* ]]; then
+    [[ -n "${KWISPR_API_KEY:-}" && "$KWISPR_API_KEY" != "sk-REPLACE_ME" ]] \
+      || die "KWISPR_API_KEY/OPENAI_API_KEY not set in $ENV_FILE"
+  fi
 }
 
 rotate_cache() {
@@ -116,7 +145,7 @@ start_recording() {
   sleep 0.05
 
   ffmpeg -hide_banner -loglevel error \
-    -f pulse -i default \
+    -f pulse -i "$KWISPR_PULSE_SOURCE" \
     -ar 16000 -ac 1 \
     "$wav" < "$FIFO_PATH" &
   local ffpid=$!
@@ -178,32 +207,75 @@ transcribe() {
     return 1
   fi
 
-  # No prompt: a bilingual prompt was causing Whisper to *translate* speech
-  # into the language of the prompt instead of transcribing as-is. Subtitle
-  # hallucinations are scrubbed by the post-processing regex below.
-  # temperature=0 for deterministic output.
   local http_code response curl_args
   response="$(mktemp)"
+
   curl_args=(
     -sS -w '%{http_code}' -o "$response"
     --max-time 120
-    https://api.openai.com/v1/audio/transcriptions
-    -H "Authorization: Bearer $OPENAI_API_KEY"
-    -F model=whisper-1
-    -F response_format=json
-    -F temperature=0
-    -F file=@"$wav"
+    "$KWISPR_API_URL"
   )
-  # Optional: force language if KWISPR_LANGUAGE is set in .env
-  if [[ -n "${KWISPR_LANGUAGE:-}" ]]; then
-    curl_args+=(-F "language=$KWISPR_LANGUAGE")
+  # Add auth only when configured. Local OpenAI-compatible servers often do
+  # not require a bearer token.
+  if [[ -n "${KWISPR_API_KEY:-}" && "$KWISPR_API_KEY" != "sk-REPLACE_ME" ]]; then
+    curl_args+=(-H "Authorization: Bearer $KWISPR_API_KEY")
   fi
+  # Optional OpenRouter leaderboard/app headers.
+  if [[ -n "${KWISPR_HTTP_REFERER:-}" ]]; then
+    curl_args+=(-H "HTTP-Referer: $KWISPR_HTTP_REFERER")
+  fi
+  if [[ -n "${KWISPR_APP_TITLE:-}" ]]; then
+    curl_args+=(-H "X-Title: $KWISPR_APP_TITLE")
+  fi
+
+  case "$KWISPR_BACKEND" in
+    openai-transcriptions)
+      # No prompt: a bilingual prompt was causing Whisper to *translate* speech
+      # into the language of the prompt instead of transcribing as-is. Subtitle
+      # hallucinations are scrubbed by the post-processing regex below.
+      # temperature=0 for deterministic output.
+      curl_args+=(
+        -F "model=$KWISPR_MODEL"
+        -F response_format=json
+        -F temperature=0
+        -F file=@"$wav"
+      )
+      # Optional: force language if KWISPR_LANGUAGE is set in .env
+      if [[ -n "${KWISPR_LANGUAGE:-}" ]]; then
+        curl_args+=(-F "language=$KWISPR_LANGUAGE")
+      fi
+      ;;
+    openrouter-chat)
+      local request_json audio_b64
+      request_json="$(mktemp)"
+      audio_b64="$(mktemp)"
+      base64 -w0 "$wav" > "$audio_b64"
+      jq -n \
+        --arg model "$KWISPR_MODEL" \
+        --arg prompt "$KWISPR_TRANSCRIPTION_PROMPT" \
+        --arg format "$KWISPR_AUDIO_FORMAT" \
+        --rawfile audio "$audio_b64" \
+        '{model:$model,messages:[{role:"user",content:[{type:"text",text:$prompt},{type:"input_audio",input_audio:{data:$audio,format:$format}}]}]}' \
+        > "$request_json"
+      rm -f "$audio_b64"
+      curl_args+=(
+        -H "Content-Type: application/json"
+        --data-binary "@$request_json"
+      )
+      ;;
+    *)
+      rm -f "$response"
+      die "Unknown KWISPR_BACKEND: $KWISPR_BACKEND"
+      ;;
+  esac
+
   http_code="$(curl "${curl_args[@]}" || echo "000")"
+  [[ -n "${request_json:-}" ]] && rm -f "$request_json"
 
   if [[ "$http_code" != "200" ]]; then
     local retry_cmd="$SCRIPT_DIR/kwispr.sh retry \"$wav\""
     echo "$retry_cmd" > "$LAST_FAILED"
-    echo -n "$retry_cmd" | wl-copy
+    echo -n "$retry_cmd" | copy_text || true
     local msg
     msg="$(cat "$response" 2>/dev/null || echo '')"
     rm -f "$response"
@@ -214,7 +286,10 @@ transcribe() {
   fi
 
   local text
-  text="$(jq -r '.text // empty' "$response")"
+  case "$KWISPR_BACKEND" in
+    openai-transcriptions) text="$(jq -r '.text // empty' "$response")" ;;
+    openrouter-chat) text="$(jq -r '.choices[0].message.content // empty' "$response")" ;;
+  esac
   rm -f "$response"
 
   # Strip known whisper hallucinations that leak from subtitle training data.
@@ -234,16 +309,29 @@ transcribe() {
     -e 's/^[[:space:]]+//; s/[[:space:]]+$//')"
 
   if [[ -z "$text" ]]; then
+    # Local VAD servers may intentionally return an empty transcript for
+    # silence/no-speech audio. Treat that as a clean skip instead of an API
+    # failure that pollutes last-failed.txt and the clipboard.
+    if [[ "$KWISPR_BACKEND" == "openai-transcriptions" && "$KWISPR_API_URL" == http://127.0.0.1:* ]]; then
+      rm -f "$txt"
+      status "⚠ No speech" 2000
+      status_clear
+      return 0
+    fi
     local retry_cmd="$SCRIPT_DIR/kwispr.sh retry \"$wav\""
     echo "$retry_cmd" > "$LAST_FAILED"
-    echo -n "$retry_cmd" | wl-copy
+    echo -n "$retry_cmd" | copy_text || true
     status "❌ Empty transcript" 5000
     status_clear
     return 1
   fi
 
   printf '%s' "$text" > "$txt"
-  printf '%s' "$text" | wl-copy
+  if ! printf '%s' "$text" | copy_text; then
+    status "❌ Clipboard unavailable" 5000
+    status_clear
+    return 1
+  fi
 
   # Auto-paste via ydotool (Ctrl+V): works on Wayland via /dev/uinput,
   # independent of keyboard layout because we send raw keycodes for a
@@ -251,11 +339,28 @@ transcribe() {
   # Falls back silently if ydotool unavailable or daemon not running.
   local pasted=0
   if [[ "${KWISPR_AUTOPASTE:-1}" == "1" ]] && command -v ydotool >/dev/null 2>&1; then
-    # Give wl-copy a moment to register the clipboard offer with the compositor
-    sleep 0.15
-    # 29 = LEFTCTRL, 47 = V
+    # Give wl-copy a moment to register the clipboard offer with the compositor.
+    sleep "${KWISPR_AUTOPASTE_DELAY:-0.30}"
+    local paste_keys
+    case "${KWISPR_PASTE_HOTKEY:-ctrl-v}" in
+      ctrl-v)
+        # 29 = LEFTCTRL, 47 = V
+        paste_keys=(29:1 47:1 47:0 29:0)
+        ;;
+      ctrl-shift-v)
+        # 29 = LEFTCTRL, 42 = LEFTSHIFT, 47 = V
+        paste_keys=(29:1 42:1 47:1 47:0 42:0 29:0)
+        ;;
+      shift-insert)
+        # 42 = LEFTSHIFT, 110 = INSERT. Often more layout-agnostic than Ctrl+V.
+        paste_keys=(42:1 110:1 110:0 42:0)
+        ;;
+      *)
+        paste_keys=(29:1 47:1 47:0 29:0)
+        ;;
+    esac
     if YDOTOOL_SOCKET=/run/user/$(id -u)/.ydotool_socket \
-         ydotool key 29:1 47:1 47:0 29:0 2>/dev/null; then
+         ydotool key "${paste_keys[@]}" 2>/dev/null; then
       pasted=1
     fi
   fi
