@@ -20,3 +20,12 @@
 - [x] Run `SettingsModelTest` red.
 - [x] Implement model and validation.
 - [x] Run `SettingsModelTest` green.
+
+
+## Task 4 — Regression tests for existing `kwispr.sh` contract
+
+- [x] Add Task 4 checklist entry.
+- [x] Create shell contract tests first.
+- [x] Run contract tests red because helpers/fakes are missing.
+- [x] Implement test harness/fakes only.
+- [x] Run contract tests green without changing `kwispr.sh`.
