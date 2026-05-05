@@ -14,12 +14,12 @@ fi
 install_runtime_packages() {
   if command -v pacman >/dev/null 2>&1; then
     echo "==> Installing pacman packages..."
-    sudo pacman -S --needed ffmpeg curl jq wl-clipboard libnotify pipewire-pulse ydotool
+    sudo pacman -S --needed ffmpeg curl jq wl-clipboard libnotify pipewire-pulse ydotool acl
   elif command -v apt >/dev/null 2>&1; then
     echo "==> Installing APT packages..."
-    sudo apt install -y ffmpeg curl jq wl-clipboard libnotify-bin
+    sudo apt install -y ffmpeg curl jq wl-clipboard libnotify-bin acl
   else
-    echo "WARN: No supported package manager found. Install ffmpeg curl jq wl-clipboard libnotify and optionally ydotool manually."
+    echo "WARN: No supported package manager found. Install ffmpeg curl jq wl-clipboard libnotify acl and optionally ydotool manually."
   fi
 }
 
@@ -59,39 +59,66 @@ EOF
     sudo usermod -aG input "$USER"
     NEED_RELOGIN=1
   fi
-  # Reload module to apply new permissions to existing /dev/uinput node
+  # Reload module to apply new permissions to existing /dev/uinput node.
   sudo modprobe -r uinput 2>/dev/null || true
   sudo modprobe uinput
+  # Make auto-paste work in the current login session too; group membership
+  # from usermod only applies after re-login, but ACL is immediate.
+  if command -v setfacl >/dev/null 2>&1 && [[ -e /dev/uinput ]]; then
+    sudo setfacl -m "u:$USER:rw" /dev/uinput || true
+  fi
 }
 
 install_ydotoold_service() {
-  echo "==> Installing ydotoold systemd service..."
-  local ydotoold_bin
+  echo "==> Installing ydotoold user systemd service..."
+  local ydotoold_bin user_unit_dir dropin_dir
   ydotoold_bin="$(command -v ydotoold || echo "$HOME/.local/bin/ydotoold")"
-  sudo tee /etc/systemd/system/ydotoold.service > /dev/null <<EOF
+  user_unit_dir="$HOME/.config/systemd/user"
+  dropin_dir="$user_unit_dir/ydotool.service.d"
+  mkdir -p "$dropin_dir"
+
+  # Some distros package /usr/lib/systemd/user/ydotool.service with plain
+  # `ydotoold`, which creates the wrong/default socket for kwispr and can get
+  # stuck in start-limit-hit after first boot. Use a user-service drop-in so the
+  # socket is stable and scoped to the active login session (%t=/run/user/$UID).
+  if ! systemctl --user cat ydotool.service >/dev/null 2>&1; then
+    cat > "$user_unit_dir/ydotool.service" <<EOF
 [Unit]
-Description=ydotool Daemon (keyboard automation via /dev/uinput)
+Description=ydotool daemon for Kwispr auto-paste
 Documentation=https://github.com/ReimuNotMoe/ydotool
-After=multi-user.target
+After=graphical-session.target
 
 [Service]
 Type=simple
-User=$USER
-Group=$USER
-ExecStart=$ydotoold_bin --socket-path=/run/user/$(id -u)/.ydotool_socket --socket-perm=0600
 Restart=on-failure
 RestartSec=2
+ExecStart=$ydotoold_bin --socket-path=%t/.ydotool_socket --socket-perm=0600
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
-  sudo systemctl daemon-reload
-  sudo systemctl enable --now ydotoold.service
+  fi
+
+  cat > "$dropin_dir/override.conf" <<EOF
+[Unit]
+After=graphical-session.target
+
+[Service]
+ExecStart=
+ExecStart=$ydotoold_bin --socket-path=%t/.ydotool_socket --socket-perm=0600
+Restart=on-failure
+RestartSec=2
+EOF
+
+  systemctl --user daemon-reload
+  systemctl --user reset-failed ydotool.service || true
+  systemctl --user enable --now ydotool.service
   sleep 0.5
-  if systemctl is-active --quiet ydotoold.service; then
-    echo "    ydotoold running (pid $(systemctl show -p MainPID --value ydotoold.service))"
+  if systemctl --user is-active --quiet ydotool.service; then
+    echo "    ydotoold running (pid $(systemctl --user show -p MainPID --value ydotool.service))"
+    echo "    socket: /run/user/$(id -u)/.ydotool_socket"
   else
-    echo "    WARN: ydotoold failed to start. Check: systemctl status ydotoold"
+    echo "    WARN: ydotool.service failed to start. Check: systemctl --user status ydotool.service"
   fi
 }
 
