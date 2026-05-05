@@ -5,6 +5,24 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
+
+namespace {
+QString detectRepoRoot(const QString &executablePath)
+{
+    QDir dir(QFileInfo(executablePath).absoluteDir());
+    for (int i = 0; i < 5; ++i) {
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("kwispr.sh")))
+            && QFileInfo::exists(dir.filePath(QStringLiteral("models/local-stt-catalog.json")))) {
+            return dir.canonicalPath();
+        }
+        if (!dir.cdUp()) {
+            break;
+        }
+    }
+    return QDir::currentPath();
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -19,7 +37,7 @@ int main(int argc, char *argv[])
         KAboutLicense::GPL_V3);
     KAboutData::setApplicationData(aboutData);
 
-    const QString repoRoot = QDir::currentPath();
+    const QString repoRoot = detectRepoRoot(QCoreApplication::applicationFilePath());
     const QString cacheDir = QDir::homePath() + QStringLiteral("/.cache/kwispr");
     TrayApp tray(repoRoot, cacheDir);
 

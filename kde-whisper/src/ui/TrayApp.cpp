@@ -1,7 +1,9 @@
 #include "ui/TrayApp.h"
 
 #include "config/KwisprSettings.h"
+#include "config/EnvFile.h"
 #include "models/ModelCatalog.h"
+#include "models/ModelManager.h"
 #include "runtime/KwisprController.h"
 #include "runtime/LocalSttClient.h"
 #include "runtime/LocalSttProcess.h"
@@ -15,6 +17,55 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QUrl>
+
+namespace {
+constexpr const char *DefaultModelDir = "/home/kcnc/.local/share/kwispr/models";
+
+bool envEnabled(const QString &value, bool fallback)
+{
+    if (value.trimmed().isEmpty()) {
+        return fallback;
+    }
+    const QString normalized = value.trimmed().toLower();
+    return normalized != QLatin1String("0") && normalized != QLatin1String("false") && normalized != QLatin1String("no");
+}
+
+KwisprSettings settingsFromEnv(const EnvFile &env)
+{
+    KwisprSettings settings;
+    settings.backend = env.value(QStringLiteral("KWISPR_BACKEND"), settings.backend);
+    settings.apiUrl = env.value(QStringLiteral("KWISPR_API_URL"), settings.apiUrl);
+    settings.apiKey = env.value(QStringLiteral("KWISPR_API_KEY"), settings.apiKey);
+    settings.model = env.value(QStringLiteral("KWISPR_MODEL"), settings.model);
+    settings.language = env.value(QStringLiteral("KWISPR_LANGUAGE"), settings.language);
+    settings.modelDir = env.value(QStringLiteral("KWISPR_MODEL_DIR"), QString::fromLatin1(DefaultModelDir));
+    settings.audioFormat = env.value(QStringLiteral("KWISPR_AUDIO_FORMAT"), settings.audioFormat);
+    settings.transcriptionPrompt = env.value(QStringLiteral("KWISPR_TRANSCRIPTION_PROMPT"), settings.transcriptionPrompt);
+    settings.openRouterReferer = env.value(QStringLiteral("KWISPR_OPENROUTER_HTTP_REFERER"), settings.openRouterReferer);
+    settings.openRouterAppTitle = env.value(QStringLiteral("KWISPR_OPENROUTER_APP_TITLE"), settings.openRouterAppTitle);
+    settings.autopaste = envEnabled(env.value(QStringLiteral("KWISPR_AUTOPASTE")), settings.autopaste);
+    settings.pasteHotkey = env.value(QStringLiteral("KWISPR_PASTE_HOTKEY"), settings.pasteHotkey);
+    bool ok = false;
+    const double delay = env.value(QStringLiteral("KWISPR_AUTOPASTE_DELAY")).toDouble(&ok);
+    if (ok) {
+        settings.autopasteDelay = delay;
+    }
+    settings.sounds = envEnabled(env.value(QStringLiteral("KWISPR_SOUNDS")), settings.sounds);
+    settings.pulseSource = env.value(QStringLiteral("KWISPR_PULSE_SOURCE"), settings.pulseSource);
+    settings.vadEnabled = envEnabled(env.value(QStringLiteral("KWISPR_VAD"), env.value(QStringLiteral("KWISPR_VAD_ENABLED"))), settings.vadEnabled);
+    settings.vadProvider = env.value(QStringLiteral("KWISPR_VAD_PROVIDER"), settings.vadProvider);
+    settings.vadModelPath = env.value(QStringLiteral("KWISPR_VAD_MODEL"), settings.vadModelPath);
+    const double threshold = env.value(QStringLiteral("KWISPR_VAD_THRESHOLD")).toDouble(&ok);
+    if (ok) {
+        settings.vadThreshold = threshold;
+    }
+    const int frameMs = env.value(QStringLiteral("KWISPR_VAD_FRAME_MS")).toInt(&ok);
+    if (ok) {
+        settings.vadFrameMs = frameMs;
+    }
+    return settings;
+}
+}
 
 TrayApp::TrayApp(QString repoRoot, QString cacheDir, QObject *parent)
     : QObject(parent)
@@ -44,9 +95,30 @@ void TrayApp::toggleRecording()
 
 void TrayApp::openSettings()
 {
-    KwisprSettings settings;
-    const ModelCatalog catalog = ModelCatalog::load(m_repoRoot + QStringLiteral("/models/local-stt-catalog.json"));
-    SettingsDialog dialog(settings, catalog, {}, nullptr);
+    const QString envPath = m_repoRoot + QStringLiteral("/.env");
+    EnvFile env;
+    env.load(envPath);
+    KwisprSettings settings = settingsFromEnv(env);
+    if (settings.modelDir.trimmed().isEmpty()) {
+        settings.modelDir = QString::fromLatin1(DefaultModelDir);
+    }
+    const QString catalogPath = m_repoRoot + QStringLiteral("/models/local-stt-catalog.json");
+    const ModelCatalog catalog = ModelCatalog::load(catalogPath);
+
+    ProcessRunner runner;
+    ModelManager modelManager(m_repoRoot, catalogPath, settings.modelDir, &runner);
+    const QMap<QString, bool> statusById = modelManager.listInstalledStatus();
+    QStringList installedModelIds;
+    for (auto it = statusById.cbegin(); it != statusById.cend(); ++it) {
+        if (it.value()) {
+            installedModelIds.append(it.key());
+        }
+    }
+
+    SettingsDialog dialog(settings, catalog, installedModelIds, &env);
+    connect(&dialog, &SettingsDialog::settingsSaved, this, [&env, envPath]() {
+        env.save(envPath);
+    });
     dialog.exec();
 }
 
